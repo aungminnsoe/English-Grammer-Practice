@@ -1,0 +1,57 @@
+{
+  "name": "GrammarQuest — English Grammar Trainer",
+  "short_name": "GrammarQuest",
+  "description": "Unlimited English grammar practice from elementary (A1) to proficiency (C2), plus a built-in dictionary with saved words and flashcards.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#07070f",
+  "theme_color": "#07070f",
+  "categories": [
+    "education",
+    "productivity"
+  ],
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Daily Challenge",
+      "short_name": "Daily",
+      "url": "./index.html?go=daily"
+    },
+    {
+      "name": "Quick Practice",
+      "short_name": "Practice",
+      "url": "./index.html?go=practice"
+    },
+    {
+      "name": "Dictionary",
+      "short_name": "Words",
+      "url": "./index.html?go=words"
+    },
+    {
+      "name": "Flashcard review",
+      "short_name": "Review",
+      "url": "./index.html?go=review"
+    }
+  ]
+}
