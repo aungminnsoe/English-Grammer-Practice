@@ -322,6 +322,8 @@ const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { c
 const uniq = a => Array.from(new Set(a));
 const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
 const low = s => s.charAt(0).toLowerCase() + s.slice(1);
+/* lower-case a subject for mid-sentence use, but never a name and never "I" */
+const lowS = n => (n === 'I' || PEOPLE.indexOf(n.split(' ')[0]) >= 0) ? n : low(n);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 function pickN(arr, n, not) {
@@ -480,27 +482,65 @@ const PREP_TIME = [
    ========================================================================== */
 
 const LEVELS = [
-  { id: 'A1', name: 'Elementary',    color: '#2be08b', em: '🌱' },
-  { id: 'A2', name: 'Pre-Intermediate', color: '#19e3ff', em: '🌊' },
-  { id: 'B1', name: 'Intermediate',  color: '#7c5cff', em: '⚡' },
-  { id: 'B2', name: 'Upper-Intermediate', color: '#ff3dcb', em: '🔥' },
-  { id: 'C1', name: 'Advanced',      color: '#ffc53d', em: '👑' },
-  { id: 'C2', name: 'Proficiency',   color: '#ff8a5c', em: '💎' }
+  { id: 'A1', name: 'Elementary',    color: '#2be08b', em: '🌱', cefr: true, w: 0 },
+  { id: 'A2', name: 'Pre-Intermediate', color: '#19e3ff', em: '🌊', cefr: true, w: 1 },
+  { id: 'B1', name: 'Intermediate',  color: '#7c5cff', em: '⚡', cefr: true, w: 2 },
+  { id: 'B2', name: 'Upper-Intermediate', color: '#ff3dcb', em: '🔥', cefr: true, w: 3 },
+  { id: 'C1', name: 'Advanced',      color: '#ffc53d', em: '👑', cefr: true, w: 4 },
+  { id: 'C2', name: 'Proficiency',   color: '#ff8a5c', em: '💎', cefr: true, w: 5 },
+  { id: 'P',  name: 'Punctuation',   color: '#b39dff', em: '✒️', cefr: false, w: 2 }
 ];
+/* the six CEFR levels only - used for the ladder, placement test and level ramps */
+const CEFR = LEVELS.filter(l => l.cefr);
 
-/* last-resort extra wrong options, so every item can always show 4 choices */
+/* Words that belong to the same closed set. When a question cannot supply three
+   wrong options of its own, we borrow sensible ones from the answer's family
+   instead of inventing nonsense words. */
+const PAD_FAMILIES = [
+  ['a', 'an', 'the', 'some', 'any', 'this', 'that'],
+  ['am', 'is', 'are', 'was', 'were', 'be', 'been', 'being'],
+  ['am not', 'is not', 'are not', 'was not', 'were not'],
+  ['do', 'does', 'did', 'done', 'doing'],
+  ["don't", "doesn't", "didn't", "isn't", "aren't", "wasn't", "weren't"],
+  ['have', 'has', 'had', 'having'],
+  ['will', 'would', 'shall', 'should', 'can', 'could', 'may', 'might', 'must'],
+  ['in', 'on', 'at', 'to', 'for', 'of', 'by', 'with', 'from', 'about', 'into', 'over', 'under'],
+  ['who', 'which', 'that', 'whose', 'whom', 'where', 'when', 'why', 'how', 'what'],
+  [',', ';', ':', '.', '!', '?', 'no punctuation', 'no comma'],
+  ['much', 'many', 'a lot of', 'few', 'little', 'enough'],
+  ['and', 'but', 'or', 'so', 'because', 'although', 'however'],
+  ['always', 'usually', 'often', 'sometimes', 'rarely', 'never'],
+  ['me', 'him', 'her', 'us', 'them', 'you', 'it'],
+  ['my', 'your', 'his', 'her', 'our', 'their', 'its'],
+  ['mine', 'yours', 'hers', 'ours', 'theirs'],
+  ['myself', 'yourself', 'himself', 'herself', 'ourselves', 'themselves', 'each other'],
+  ['since', 'for', 'ago', 'from', 'during', 'while', 'until'],
+  ['too', 'enough', 'very', 'so', 'such', 'quite']
+];
+/* last-resort extra wrong options, so every item can always show four choices */
 function padDistractors(ans, have) {
-  const w = String(ans).split(' ');
+  const out = have.slice();
+  const raw = String(ans);
+  const lowAns = raw.toLowerCase();
+  const upper = raw.charAt(0) === raw.charAt(0).toUpperCase() && /[a-z]/i.test(raw.charAt(0));
+  const fam = PAD_FAMILIES.find(f => f.indexOf(lowAns) >= 0);
+  if (fam) {
+    for (const c of shuffle(fam)) {
+      if (out.length >= 3) break;
+      const v = upper ? cap(c) : c;
+      if (v !== raw && out.indexOf(v) < 0) out.push(v);
+    }
+  }
+  const w = raw.split(' ');
   const last = w[w.length - 1], pre = w.slice(0, -1).join(' ');
   const J = x => (pre ? pre + ' ' : '') + x;
   const cands = [
-    J(last + 's'), J(last.replace(/e$/, '') + 'ing'), J(last + 'ed'),
-    'to ' + ans, 'is ' + ans, 'was ' + ans, 'have ' + ans, 'be ' + ans, 'did ' + ans
+    'to ' + lowAns, J(last + 's'), J(last.replace(/e$/, '') + 'ing'), J(last + 'ed'),
+    'is ' + lowAns, 'was ' + lowAns, 'have ' + lowAns, 'be ' + lowAns, 'did ' + lowAns
   ];
-  const out = have.slice();
   for (const c of cands) {
     if (out.length >= 3) break;
-    if (c !== ans && !out.includes(c)) out.push(c);
+    if (c !== raw && out.indexOf(c) < 0) out.push(c);
   }
   return out;
 }
@@ -570,7 +610,7 @@ topic({
         `"${p[0]}" is irregular: the plural is <b>${p[1]}</b>.`);
     }
     const n = pick(NOUNC), pl = NPLUR[n];
-    return mk(`I have two ___.`, pl, [n + 's', n + 'es', n.replace(/y$/, 'ies'), n], null,
+    return mk(`I have two ___.`, pl, [n + 's', n + 'es', n.replace(/y$/, 'ies'), n, n + "'s", pl + "'"], null,
       `The plural of "${n}" is <b>${pl}</b>.`);
   }
 });
@@ -649,10 +689,10 @@ topic({
     const s = pick(SUBJ), v = pick(V);
     const aux = s.sg ? 'Does' : 'Do';
     if (Math.random() < .4) {
-      return mk(`${aux} ${low(s.n)} ___ ${v.c}?`, v.b, [v.b, v.s, v.p, v.g], null,
+      return mk(`${aux} ${lowS(s.n)} ___ ${v.c}?`, v.b, [v.b, v.s, v.p, v.g], null,
         `After <b>${aux.toLowerCase()}</b> the verb stays in the base form: <b>${v.b}</b>.`);
     }
-    return mk(`___ ${low(s.n)} ${v.b} ${v.c}?`, aux, ['Do', 'Does', 'Is', 'Are'], null,
+    return mk(`___ ${lowS(s.n)} ${v.b} ${v.c}?`, aux, ['Do', 'Does', 'Is', 'Are'], null,
       `"${s.n}" needs <b>${aux}</b> to form the question.`);
   }
 });
@@ -747,7 +787,7 @@ topic({
   ex: ['I called <em>him</em>.', 'She works with <em>us</em>.', 'Give <em>me</em> the book.'],
   gen() {
     const s = pick(SUBJ.slice(0, 6));
-    return mk(`Can you call ___ later? [${/^[A-Z][a-z]+$/.test(s.n) && PEOPLE.includes(s.n) ? s.n : low(s.n)}]`, s.o, ['me', 'him', 'her', 'us', 'them', 'you'], null,
+    return mk(`Can you call ___ later? [${lowS(s.n)}]`, s.o, ['me', 'him', 'her', 'us', 'them', 'you'], null,
       `After a verb we use the object pronoun: ${s.n} → <b>${s.o}</b>.`);
   }
 });
@@ -840,7 +880,7 @@ topic({
       return mk(`${s.n} didn't ___ ${v.c} ${t}.`, v.b, [v.b, v.p, v.pp, v.s], null,
         `After <b>didn't</b> the verb returns to the base form: <b>${v.b}</b>.`);
     }
-    return mk(`Did ${low(s.n)} ___ ${v.c} ${t}?`, v.b, [v.b, v.p, v.pp, v.g], null,
+    return mk(`Did ${lowS(s.n)} ___ ${v.c} ${t}?`, v.b, [v.b, v.p, v.pp, v.g], null,
       `After <b>did</b> we always use the base form: <b>${v.b}</b>.`);
   }
 });
@@ -888,7 +928,7 @@ topic({
   gen() {
     const a = pick(ADJ);
     return mk(`This one is ___ than the other one.`, a.c,
-      [a.b + 'er', 'more ' + a.b, a.s, 'most ' + a.b], null,
+      [a.b + 'er', 'more ' + a.b, a.s, 'most ' + a.b, a.b, 'more ' + a.c], null,
       a.t === 'long' ? `"${a.b}" is a long adjective → <b>more ${a.b}</b>.`
         : a.t === 'irr' ? `"${a.b}" is irregular → <b>${a.c}</b>.`
         : `"${a.b}" is short → add -er → <b>${a.c}</b>.`);
@@ -903,7 +943,7 @@ topic({
   ex: ['It is <em>the biggest</em> city in the country.', 'That was <em>the most difficult</em> exam.'],
   gen() {
     const a = pick(ADJ);
-    return mk(`It is the ___ hotel in town.`, a.s, [a.b + 'est', 'most ' + a.b, a.c, 'more ' + a.b], null,
+    return mk(`It is the ___ hotel in town.`, a.s, [a.b + 'est', 'most ' + a.b, a.c, 'more ' + a.b, a.b, 'most ' + a.s], null,
       a.t === 'long' ? `Long adjective → <b>the most ${a.b}</b>.`
         : a.t === 'irr' ? `"${a.b}" is irregular → <b>the ${a.s}</b>.`
         : `Short adjective → <b>the ${a.s}</b>.`);
@@ -1094,7 +1134,7 @@ topic({
       return mk(`If it rains tomorrow, we ___ at home.`, 'will stay', ['will stay', 'stay', 'would stay', 'stayed'], null,
         `The result clause of a first conditional takes <b>will + base verb</b>.`);
     }
-    return mk(`If ${low(s.n)} ___ early, we will start on time.`, s.sg ? 'arrives' : 'arrive',
+    return mk(`If ${lowS(s.n)} ___ early, we will start on time.`, s.sg ? 'arrives' : 'arrive',
       ['arrive', 'arrives', 'will arrive', 'would arrive'], null,
       `The <b>if-clause</b> uses the present simple, never "will".`);
   }
@@ -1131,7 +1171,7 @@ topic({
       return mk(`${n} ___ ${v.pp} ${past ? 'last week' : 'every day'}.`, be, ['is', 'are', 'was', 'were'], null,
         `${plural ? 'Plural' : 'Singular'} subject + ${past ? 'past' : 'present'} → <b>${be}</b> + past participle.`);
     }
-    return mk(`${n} ${be} ___ ${past ? 'yesterday' : 'regularly'}.`, v.pp, [v.b, v.p, v.pp, v.g], null,
+    return mk(`${n} ${be} ___ ${past ? 'yesterday' : 'regularly'}.`, v.pp, [v.b, v.p, v.pp, v.g, v.s, 'being ' + v.g], null,
       `The passive needs the <b>past participle</b>: ${v.b} → <b>${v.pp}</b>.`);
   }
 });
@@ -1305,7 +1345,7 @@ topic({
       return mk(`When we arrived, the train ___ already left.`, 'had', ['has', 'had', 'was', 'have'], null,
         `The earlier past action takes <b>had</b> + past participle.`);
     }
-    return mk(`By the time I got there, ${low(s.n)} had ___ ${v.c}.`, v.pp, [v.b, v.p, v.pp, v.g], null,
+    return mk(`By the time I got there, ${lowS(s.n)} had ___ ${v.c}.`, v.pp, [v.b, v.p, v.pp, v.g], null,
       `After <b>had</b> we need the past participle: ${v.b} → <b>${v.pp}</b>.`);
   }
 });
@@ -1519,6 +1559,1163 @@ topic({
     return mk(it[0], it[1], it[2], null, it[3]);
   }
 });
+/* =============== ADDITIONAL PATTERNS  ·  A1 & A2 =============== */
+
+const POSSP = { 'I': 'mine', 'You': 'yours', 'He': 'his', 'She': 'hers', 'We': 'ours', 'They': 'theirs' };
+const POSSADJ = { 'I': 'my', 'You': 'your', 'He': 'his', 'She': 'her', 'We': 'our', 'They': 'their' };
+
+topic({
+  id: 'whq', lvl: 'A1', em: '🙋‍♂️', name: 'Question words (wh- questions)',
+  why: ['<b>Who</b> = person. <b>What</b> = thing. <b>Where</b> = place. <b>When</b> = time. <b>Why</b> = reason. <b>How</b> = manner.',
+        'Also: <b>Whose</b> = possession, <b>Which</b> = a choice from a limited set, <b>How much / many / long / often</b>.',
+        'Word order: <b>question word + auxiliary + subject + verb</b> → <i>Where <u>do</u> you live?</i>',
+        'Never use statement order in a question: <s>Where you live?</s>'],
+  ex: ['<em>Where</em> do you work?', '<em>Why</em> is she late?', '<em>How much</em> does it cost?', '<em>Whose</em> bag is this?'],
+  gen() {
+    const items = [
+      ['___ is your teacher?', 'Who', ['What', 'Which', 'Whose'], 'We ask about a <b>person</b> with <b>Who</b>.'],
+      ['___ do you live?', 'Where', ['When', 'What', 'Which'], 'We ask about a <b>place</b> with <b>Where</b>.'],
+      ['___ does the film start?', 'When', ['Where', 'Who', 'How'], 'We ask about <b>time</b> with <b>When</b>.'],
+      ['___ are you so tired?', 'Why', ['How', 'What', 'When'], 'We ask about a <b>reason</b> with <b>Why</b>.'],
+      ['___ do you spell your name?', 'How', ['What', 'Which', 'Why'], 'We ask about <b>manner or method</b> with <b>How</b>.'],
+      ['___ bag is this?', 'Whose', ["Who's", 'Which', 'What'], 'We ask about <b>possession</b> with <b>Whose</b>.'],
+      ['___ colour do you prefer, red or blue?', 'Which', ['What', 'Who', 'Whose'], 'With a <b>limited choice</b> we use <b>Which</b>.'],
+      ['___ much does the ticket cost?', 'How', ['What', 'Which', 'Why'], '<b>How much</b> asks about price or quantity.'],
+      ['___ many people came to the party?', 'How', ['What', 'Which', 'Who'], '<b>How many</b> asks about a countable number.'],
+      ['___ often do you go to the gym?', 'How', ['When', 'What', 'Which'], '<b>How often</b> asks about frequency.'],
+      ['___ is your favourite film?', 'What', ['Which', 'Who', 'Whose'], 'With an <b>open</b> choice we use <b>What</b>.'],
+      ['___ long have you lived here?', 'How', ['When', 'What', 'Which'], '<b>How long</b> asks about duration.']
+    ];
+    if (Math.random() < .3) {
+      const s = pick(SUBJ.filter(x => x.n !== 'I')), v = pick(V), q = pick(['Where', 'When', 'Why', 'How']);
+      const aux = s.sg ? 'does' : 'do';
+      return mk(`${q} ___ ${lowS(s.n)} ${v.b} ${v.c}?`, aux, ['do', 'does', 'is', 'are'], null,
+        `After the question word we need the auxiliary <b>${aux}</b>, then the subject, then the base verb.`);
+    }
+    const it = pick(items);
+    return mk(it[0], it[1], it[2], null, it[3]);
+  }
+});
+
+topic({
+  id: 'posspron', lvl: 'A1', em: '🫵', name: 'Possessive pronouns (mine, yours)',
+  why: ['Possessive <b>adjectives</b> come before a noun: <i>my book, her car</i>.',
+        'Possessive <b>pronouns</b> replace the noun completely: <i>That book is <u>mine</u>.</i>',
+        'The pairs are: my/mine, your/yours, his/his, her/hers, our/ours, their/theirs.',
+        'They never take an apostrophe: <s>her\'s</s>, <s>their\'s</s>.'],
+  ex: ['This is <em>my</em> bag. → This bag is <em>mine</em>.',
+       'Is this coat <em>yours</em>?', 'Their house is big; <em>ours</em> is small.'],
+  gen() {
+    /* "his" is both forms, so it is left out of this drill */
+    const s = pick(SUBJ.slice(0, 6).filter(x => x.n !== 'He')), n = pick(NOUNC);
+    if (Math.random() < .5) {
+      const p = POSSP[s.n];
+      return mk(`That ${n} is ___. (it belongs to ${s.o})`, p,
+        [POSSADJ[s.n], p + "'s", s.o, POSSADJ[s.n] + "'s"], null,
+        `A possessive <b>pronoun</b> stands alone with no noun after it: <b>${p}</b> (never "${POSSADJ[s.n]}" here).`);
+    }
+    const p = POSSADJ[s.n];
+    return mk(`${s.n} lost ___ ${n} yesterday.`, p, [POSSP[s.n], p + "'s", s.n, s.o], null,
+      `Before a noun we need the possessive <b>adjective</b>: <b>${p} ${n}</b>, not "${POSSP[s.n]} ${n}".`);
+  }
+});
+
+topic({
+  id: 'wouldlike', lvl: 'A2', em: '☕', name: 'would like / \'d like',
+  why: ['<b>would like</b> = want, but more polite. It is followed by a <b>noun</b> or <b>to + verb</b>.',
+        'Short form: I\'d, you\'d, he\'d like.',
+        'Offers and requests: <i>Would you like a coffee? I\'d like a table for two, please.</i>',
+        'Careful: <b>Do you like coffee?</b> asks about taste in general. <b>Would you like a coffee?</b> offers one now.'],
+  ex: ['I <em>would like</em> a cup of tea.', 'She <em>\'d like to</em> book a table.', '<em>Would you like</em> to join us?'],
+  gen() {
+    const r = Math.random(), v = pick(V);
+    if (r < .35) {
+      return mk(`I would like ___ ${v.c}.`, 'to ' + v.b, [v.b, v.g, 'that I ' + v.b], null,
+        `<b>Would like</b> is followed by the <b>to-infinitive</b>: <b>to ${v.b}</b>.`);
+    }
+    if (r < .6) {
+      return mk(`___ like something to drink?`, 'Would you', ['Do you', 'Are you', 'Will you'], null,
+        `A polite offer uses <b>Would you like…?</b>`);
+    }
+    if (r < .8) {
+      return mk(`___ you like coffee? (in general, every day)`, 'Do', ['Would', 'Are', 'Will'], null,
+        `For a general preference we use <b>Do you like…?</b> — "Would you like" offers something right now.`);
+    }
+    return mk(`She ___ a table by the window, please.`, "'d like", ['likes', 'like to', 'would to like'], null,
+      `<b>'d like</b> is the short form of "would like", and it is followed here by a noun.`);
+  }
+});
+
+topic({
+  id: 'should', lvl: 'A2', em: '💡', name: 'should / ought to (advice)',
+  why: ['<b>should</b> + base verb gives advice or says what is a good idea.',
+        'Negative: <b>shouldn\'t</b>. Question: <i>Should I…?</i>',
+        '<b>ought to</b> means almost the same but is a little more formal, and it keeps the <b>to</b>.',
+        'Never add -s or "to" after should: <s>he shoulds</s>, <s>should to go</s>.'],
+  ex: ['You <em>should see</em> a doctor.', 'You <em>shouldn\'t eat</em> so much sugar.',
+       'We <em>ought to</em> leave now.', '<em>Should I</em> call her?'],
+  gen() {
+    const s = pick(SUBJ), v = pick(V), r = Math.random();
+    if (r < .35) {
+      return mk(`${s.n} should ___ ${v.c}.`, v.b, ['to ' + v.b, v.s, v.g], null,
+        `After <b>should</b> we use the bare base form: <b>${v.b}</b>, with no "to" and no -s.`);
+    }
+    if (r < .6) {
+      return mk(`${s.n} ___ ${v.b} ${v.c} — it is a bad idea.`, "shouldn't", ['should', 'should not to', "doesn't should"], null,
+        `Advice against something → <b>shouldn't</b> + base verb.`);
+    }
+    if (r < .8) {
+      return mk(`We ___ leave soon, or we will be late.`, 'ought to', ['ought', 'ought for', 'should to'], null,
+        `<b>ought to</b> keeps the word "to" — unlike "should".`);
+    }
+    return mk(`___ I call the doctor?`, 'Should', ['Do should', 'Am should', 'Shall to'], null,
+      `To ask for advice, put the modal first: <b>Should I…?</b>`);
+  }
+});
+
+topic({
+  id: 'asas', lvl: 'A2', em: '⚖️', name: 'as … as (equal comparison)',
+  why: ['<b>as + adjective + as</b> says two things are the same: <i>She is as tall as her brother.</i>',
+        'The adjective never changes to the comparative: <s>as taller as</s>.',
+        '<b>not as … as</b> means less than: <i>This is not as expensive as that one.</i>',
+        'Also used with adverbs: <i>He runs as fast as I do.</i> And: <b>the same as</b>, <b>twice as … as</b>.'],
+  ex: ['My car is <em>as fast as</em> yours.', 'It isn\'t <em>as cold as</em> yesterday.',
+       'This one costs <em>twice as much as</em> that one.'],
+  gen() {
+    const a = pick(ADJ.filter(x => x.t !== 'irr')), r = Math.random();
+    if (r < .45) {
+      return mk(`This one is ___ the other one — they are exactly the same.`, `as ${a.b} as`,
+        [`as ${a.c} as`, `so ${a.b} as`, `${a.c} than`], null,
+        `An equal comparison uses <b>as + ${a.b} + as</b>. The adjective stays in its basic form.`);
+    }
+    if (r < .75) {
+      return mk(`My phone isn't ___ yours. (yours is better)`, `as good as`,
+        ['as better as', 'so better as', 'good as'], null,
+        `<b>not as … as</b> means "less than". The adjective stays basic: <b>as good as</b>.`);
+    }
+    return mk(`He earns twice ___ I do.`, 'as much as', ['as many as', 'so much as', 'more than as'], null,
+      `With an uncountable idea such as money we say <b>twice as much as</b>.`);
+  }
+});
+
+topic({
+  id: 'prepmove', lvl: 'A2', em: '🏃‍♀️', name: 'Prepositions of movement',
+  why: ['<b>to</b> = towards a destination. <b>into</b> = entering. <b>out of</b> = leaving.',
+        '<b>through</b> = in one side and out the other. <b>across</b> = from one side to the other of a surface.',
+        '<b>along</b> = following a line. <b>up / down</b>, <b>over</b> = above and across, <b>past</b> = going by.',
+        'Careful: <i>go <u>home</u></i> takes no preposition.'],
+  ex: ['She walked <em>into</em> the room.', 'We drove <em>through</em> the tunnel.',
+       'He swam <em>across</em> the river.', 'They walked <em>past</em> the bank.'],
+  gen() {
+    const items = [
+      ['She walked ___ the room and sat down.', 'into', ['in', 'at', 'on'], '<b>into</b> shows movement to the inside. "in" would describe a position, not a movement.'],
+      ['We drove ___ a long tunnel.', 'through', ['across', 'over', 'along'], '<b>through</b> = in one end and out the other, inside something.'],
+      ['He swam ___ the river to the other side.', 'across', ['through', 'along', 'into'], '<b>across</b> = from one side to the other of a surface.'],
+      ['They walked ___ the river for an hour.', 'along', ['across', 'through', 'over'], '<b>along</b> = following the line of something.'],
+      ['The cat jumped ___ the wall.', 'over', ['above', 'across', 'through'], '<b>over</b> = up and across something.'],
+      ['We walked ___ the bank without stopping.', 'past', ['by of', 'through', 'into'], '<b>past</b> = going by something.'],
+      ['She ran ___ the stairs to the top floor.', 'up', ['on', 'in', 'to'], '<b>up</b> shows movement to a higher place.'],
+      ['He came ___ of the shop with two bags.', 'out', ['off', 'from', 'away'], '<b>out of</b> = leaving the inside of something.'],
+      ['I go ___ work by bus every day.', 'to', ['at', 'in', 'into'], 'Movement to a destination takes <b>to</b>.'],
+      ['It was late, so we went ___.', 'home', ['to home', 'at home', 'in home'], '"Home" takes <b>no preposition</b> after a verb of movement.']
+    ];
+    const it = pick(items);
+    return mk(it[0], it[1], it[2], null, it[3]);
+  }
+});
+
+topic({
+  id: 'spelling', lvl: 'A2', em: '🔤', name: 'Spelling: -s, -ing and -ed',
+  why: ['Third person <b>-s</b>: add -es after -s, -sh, -ch, -x, -o → watches, goes. Consonant + y → -ies: study → studies.',
+        '<b>-ing</b>: drop a final silent e → make → making. One short vowel + one consonant → double it: stop → stopping.',
+        '<b>-ed</b>: same doubling rule → stopped. Consonant + y → -ied: carry → carried.',
+        'Never double after two vowels or two consonants: rain → raining, work → worked.'],
+  ex: ['study → he <em>studies</em>', 'stop → <em>stopping</em>, <em>stopped</em>',
+       'make → <em>making</em>', 'watch → he <em>watches</em>'],
+  gen() {
+    const v = pick(V), r = Math.random();
+    if (r < .34) {
+      return mk(`${pick(SUBJ3).n} ___ ${v.c} every day. (${v.b})`, v.s,
+        [v.b + 's', v.b + 'es', v.b + 'ies', v.b], null,
+        `The third person form of "${v.b}" is <b>${v.s}</b>.`);
+    }
+    if (r < .67) {
+      return mk(`They are ___ ${v.c} right now. (${v.b})`, v.g,
+        [v.b + 'ing', v.b + v.b.slice(-1) + 'ing', v.b.replace(/e$/, '') + 'ing', v.b + 'eing', v.s + 'ing'], null,
+        `The -ing form of "${v.b}" is <b>${v.g}</b>.`);
+    }
+    if (v.reg) {
+      return mk(`They ___ ${v.c} last week. (${v.b})`, v.p,
+        [v.b + 'ed', v.b + 'd', v.b + v.b.slice(-1) + 'ed', v.b + 'ied'], null,
+        `"${v.b}" is regular, and the correct spelling is <b>${v.p}</b>.`);
+    }
+    return mk(`They ___ ${v.c} last week. (${v.b})`, v.p,
+      [v.b + 'ed', v.b + 'd', v.pp, v.g], null,
+      `"${v.b}" is irregular, so there is no -ed: the past is <b>${v.p}</b>.`);
+  }
+});
+
+topic({
+  id: 'adjorder', lvl: 'A2', em: '🎨', name: 'Adjective order',
+  why: ['When several adjectives come before a noun, English puts them in a fixed order:',
+        '<b>opinion → size → age → shape → colour → origin → material → purpose</b>.',
+        'So: <i>a lovely little old round brown Italian leather riding boot.</i>',
+        'In practice two or three adjectives is normal, and opinion always comes first.'],
+  ex: ['a <em>beautiful big old</em> house', 'a <em>lovely long red</em> dress',
+       'a <em>small black leather</em> bag'],
+  gen() {
+    const op = pick(['lovely', 'beautiful', 'horrible', 'nice', 'strange']);
+    const sz = pick(['big', 'small', 'long', 'short', 'tiny']);
+    const col = pick(['red', 'black', 'blue', 'green', 'white']);
+    const n = pick(['dress', 'car', 'bag', 'table', 'jacket', 'box']);
+    const right = `${op} ${sz} ${col}`;
+    return mk(`She bought a ___ ${n}.`, right,
+      [`${col} ${sz} ${op}`, `${sz} ${op} ${col}`, `${col} ${op} ${sz}`], null,
+      `The fixed order is <b>opinion → size → colour</b>: ${op} (opinion), ${sz} (size), ${col} (colour).`);
+  }
+});
+
+topic({
+  id: 'edinging', lvl: 'A2', em: '😴', name: '-ed and -ing adjectives',
+  why: ['<b>-ed</b> adjectives describe how a <b>person feels</b>: <i>I am bored.</i>',
+        '<b>-ing</b> adjectives describe the <b>thing that causes</b> the feeling: <i>The lesson is boring.</i>',
+        'So: <i>The film was boring, so I was bored.</i>',
+        'Saying "I am boring" means you are a dull person — a very common mistake.'],
+  ex: ['The journey was <em>tiring</em>. I felt <em>tired</em>.',
+       'She is <em>interested</em> in history. History is <em>interesting</em>.'],
+  gen() {
+    const pairs = [['bored', 'boring'], ['tired', 'tiring'], ['interested', 'interesting'],
+      ['excited', 'exciting'], ['confused', 'confusing'], ['surprised', 'surprising'],
+      ['relaxed', 'relaxing'], ['annoyed', 'annoying'], ['frightened', 'frightening'],
+      ['embarrassed', 'embarrassing'], ['disappointed', 'disappointing'], ['amazed', 'amazing']];
+    const p = pick(pairs);
+    const o = pick(pairs.filter(x => x[0] !== p[0]));
+    const things = ['film', 'lesson', 'book', 'journey', 'meeting', 'news', 'game'];
+    if (Math.random() < .5) {
+      const s = pick(SUBJ.slice(0, 6));
+      return mk(`${s.n} ${s.be} really ___ by the end of the day.`, p[0], [p[1], o[0], o[1]], null,
+        `This describes how a <b>person feels</b>, so we use the <b>-ed</b> form: <b>${p[0]}</b>.`);
+    }
+    const t = pick(things);
+    return mk(`The ${t} was very ___.`, p[1], [p[0], o[1], o[0]], null,
+      `This describes the <b>thing that causes</b> the feeling, so we use the <b>-ing</b> form: <b>${p[1]}</b>.`);
+  }
+});
+
+topic({
+  id: 'futurearr', lvl: 'A2', em: '📆', name: 'Talking about the future: which form?',
+  why: ['<b>Present continuous</b> = a fixed arrangement with another person: <i>I\'m meeting Tom at six.</i>',
+        '<b>going to</b> = an intention you have already decided, or a prediction from evidence.',
+        '<b>will</b> = a prediction, a promise, or a decision made while speaking.',
+        '<b>Present simple</b> = a timetable or schedule: <i>The train leaves at 6.30.</i>'],
+  ex: ['I <em>\'m seeing</em> the dentist tomorrow. (arrangement)',
+       'I <em>\'m going to</em> study tonight. (intention)',
+       'I think it <em>will</em> rain. (prediction)',
+       'The film <em>starts</em> at eight. (timetable)'],
+  gen() {
+    const r = Math.random(), v = pick(V);
+    if (r < .3) {
+      return mk(`I ___ Tom at six — we arranged it yesterday.`, "'m meeting",
+        ['will meet', 'meet', 'am going to meeting'], null,
+        `A fixed arrangement with another person takes the <b>present continuous</b>.`);
+    }
+    if (r < .55) {
+      return mk(`The train ___ at 6.30 every evening.`, 'leaves',
+        ['is leaving', 'will leave', 'is going to leave'], null,
+        `A timetable takes the <b>present simple</b>.`);
+    }
+    if (r < .8) {
+      return mk(`Look at those clouds — it ___ rain.`, 'is going to',
+        ['will', 'is raining', 'shall'], null,
+        `A prediction based on <b>evidence you can see now</b> takes <b>going to</b>.`);
+    }
+    return mk(`That bag looks heavy. I ___ you.`, "'ll help",
+      ['am helping', 'am going to help', 'help'], null,
+      `A decision made at the <b>moment of speaking</b> takes <b>will</b>.`);
+  }
+});
+
+topic({
+  id: 'sodoi', lvl: 'A2', em: '🙌', name: 'So do I / Neither do I',
+  why: ['To agree with a <b>positive</b> statement: <b>So + auxiliary + subject</b>. <i>"I\'m tired." "So am I."</i>',
+        'To agree with a <b>negative</b> statement: <b>Neither / Nor + auxiliary + subject</b>. <i>"I don\'t smoke." "Neither do I."</i>',
+        'The auxiliary must match the original sentence: am/is/are, do/does/did, have/has, can, will.',
+        'The subject and verb are inverted — never <s>So I am</s>.'],
+  ex: ['"I love pizza." "<em>So do I</em>."', '"She can\'t swim." "<em>Neither can I</em>."',
+       '"We went to Rome." "<em>So did we</em>."'],
+  gen() {
+    const cases = [
+      ["I'm really hungry.", 'So am I', ['So do I', 'So I am', 'Neither am I'], 'The statement uses <b>am</b>, so the reply is <b>So am I</b>.'],
+      ["I don't like horror films.", 'Neither do I', ['So do I', 'Neither I do', 'Neither am I'], 'A negative statement with <b>don\'t</b> takes <b>Neither do I</b>.'],
+      ["I went to the concert.", 'So did I', ['So do I', 'So have I', 'So I did'], 'A past simple statement takes the auxiliary <b>did</b>: <b>So did I</b>.'],
+      ["I can't drive.", 'Neither can I', ['So can I', 'Neither do I', 'Neither I can'], 'The modal <b>can</b> is repeated: <b>Neither can I</b>.'],
+      ["I've never been to Japan.", 'Neither have I', ['So have I', 'Neither did I', 'Neither I have'], 'The present perfect takes <b>have</b>: <b>Neither have I</b>.'],
+      ["I'll be there at six.", 'So will I', ['So am I', 'So do I', 'So I will'], 'The future with <b>will</b> is repeated: <b>So will I</b>.'],
+      ["She loves chocolate.", 'So does he', ['So do he', 'So is he', 'So he does'], 'A third person present simple takes <b>does</b>: <b>So does he</b>.'],
+      ["They weren't at home.", 'Neither were we', ['So were we', 'Neither did we', 'Neither we were'], 'The past of "be" is repeated: <b>Neither were we</b>.'],
+      ["I didn't understand that.", 'Neither did I', ['So did I', 'Neither do I', 'Neither I did'], 'A negative past simple takes <b>did</b>: <b>Neither did I</b>.'],
+      ["I'm not ready yet.", "Neither am I", ['So am I', 'Neither do I', 'Neither I am'], 'A negative with <b>am</b> takes <b>Neither am I</b>.']
+    ];
+    const c = pick(cases);
+    return mk(`"${c[0]}" → "___."`, c[1], c[2], null, c[3]);
+  }
+});
+
+/* =============== ADDITIONAL PATTERNS  ·  B1 & B2 =============== */
+
+topic({
+  id: 'futuretime', lvl: 'B1', em: '⏭️', name: 'Future time clauses',
+  why: ['After <b>when, as soon as, until, before, after, by the time, once</b> we use a <b>present</b> tense for future time — never "will".',
+        'The main clause keeps <b>will</b> or an imperative: <i>I\'ll call you when I <u>arrive</u>.</i>',
+        'Use the present perfect to stress that one action finishes first: <i>Once I <u>have finished</u>, I\'ll join you.</i>',
+        'The same rule applies after <b>if</b> in a first conditional.'],
+  ex: ['I\'ll phone you when I <em>get</em> home.', 'Wait here until she <em>comes</em> back.',
+       'As soon as the rain <em>stops</em>, we\'ll go out.'],
+  gen() {
+    const v = pick(V), conj = pick(['when', 'as soon as', 'until', 'before', 'after', 'once']);
+    const startConj = pick(['when', 'as soon as', 'after', 'once']);
+    if (Math.random() < .55) {
+      return mk(`I'll call you ${conj} I ___ ${v.c}.`, v.b,
+        ['will ' + v.b, 'am going to ' + v.b, v.p, 'would ' + v.b], null,
+        `After <b>${conj}</b> we use the <b>present simple</b> for future time — never "will".`);
+    }
+    const s = pick(SUBJ3);
+    return mk(`We will start ${startConj} ${lowS(s.n)} ___.`, 'arrives',
+      ['will arrive', 'arrived', 'is arriving', 'would arrive'], null,
+      `The time clause takes a <b>present</b> tense (<b>arrives</b>); only the main clause uses "will".`);
+  }
+});
+
+topic({
+  id: 'subjobjq', lvl: 'B1', em: '🔎', name: 'Subject vs object questions',
+  why: ['If the question word is the <b>subject</b>, there is <b>no auxiliary</b> and the word order stays normal: <i>Who <u>called</u> you?</i>',
+        'If the question word is the <b>object</b>, we need do/does/did: <i>Who <u>did</u> you call?</i>',
+        'A quick test: if the answer is the person doing the action, it is a subject question.',
+        'The same applies to <b>What</b>: <i>What happened?</i> (subject) vs <i>What did you say?</i> (object).'],
+  ex: ['<em>Who broke</em> the window? → Tom did. (subject)',
+       '<em>Who did</em> you invite? → I invited Tom. (object)',
+       '<em>What happened</em>? (subject — no "did")'],
+  gen() {
+    const v = pick(V), r = Math.random();
+    if (r < .35) {
+      return mk(`Who ___ you at the station yesterday? (answer: Anna did)`, 'met',
+        ['did meet', 'did met', 'does meet', 'has met you'], null,
+        `"Who" is the <b>subject</b> here, so there is no auxiliary — just the past simple: <b>met</b>.`);
+    }
+    if (r < .7) {
+      return mk(`Who ___ you invite to the party? (answer: I invited Anna)`, 'did',
+        ['do', 'does', 'has', 'was'], null,
+        `"Who" is the <b>object</b> here, so we need the auxiliary <b>did</b> + base verb.`);
+    }
+    return mk(`What ___ after the meeting?`, 'happened',
+      ['did happen', 'did happened', 'does happen', 'has happen'], null,
+      `"What" is the <b>subject</b> of "happen", so no auxiliary is used: <b>What happened?</b>`);
+  }
+});
+
+topic({
+  id: 'reflexive', lvl: 'B1', em: '🪞', name: 'Reflexive pronouns & each other',
+  why: ['Use a reflexive pronoun when the subject and the object are the <b>same</b>: <i>I cut <u>myself</u>.</i>',
+        'Forms: myself, yourself, himself, herself, itself, ourselves, yourselves, themselves.',
+        '<b>by + reflexive</b> = alone or without help: <i>She did it by herself.</i>',
+        '<b>each other / one another</b> = two or more people doing something to <i>each other</i>, not to themselves.',
+        'Some verbs never take one in English: <s>I feel myself tired</s>, <s>concentrate yourself</s>.'],
+  ex: ['He hurt <em>himself</em> playing football.', 'We enjoyed <em>ourselves</em> at the party.',
+       'They painted the house <em>by themselves</em>.', 'Tom and Anna write to <em>each other</em> every week.'],
+  gen() {
+    const s = pick(SUBJ.slice(0, 6)), r = Math.random();
+    if (r < .4) {
+      return mk(`${s.n} hurt ___ while cooking.`, s.r,
+        [s.o, s.p + 'self', s.r.replace('self', 'selfs'), 'each other'], null,
+        `The subject and the object are the same person, so we use the reflexive <b>${s.r}</b>.`);
+    }
+    if (r < .7) {
+      return mk(`${s.n} did the whole job by ___, with no help at all.`, s.r,
+        [s.o, s.p, 'each other', s.r + 's'], null,
+        `<b>by + reflexive</b> means "alone, without help": <b>by ${s.r}</b>.`);
+    }
+    return mk(`Tom and Anna have known ___ since school.`, 'each other',
+      ['themselves', 'himself', 'theirselves', 'one and other'], null,
+      `Two people doing something to <b>the other person</b> takes <b>each other</b>, not "themselves".`);
+  }
+});
+
+topic({
+  id: 'makelet', lvl: 'B1', em: '🎚️', name: 'make / let / allow',
+  why: ['<b>make somebody do</b> = force or cause — base verb, no "to": <i>She made me wait.</i>',
+        '<b>let somebody do</b> = allow — base verb, no "to": <i>They let us leave early.</i>',
+        '<b>allow somebody to do</b> = permit — this one keeps the <b>to</b>.',
+        '"Let" has no passive: use <i>be allowed to</i> instead. But "make" does: <i>I was made to wait.</i>'],
+  ex: ['The film <em>made me cry</em>.', 'My parents <em>let me go</em> out.',
+       'They <em>allowed us to</em> stay.', 'We <em>weren\'t allowed to</em> take photos.'],
+  gen() {
+    const v = pick(V), r = Math.random();
+    if (r < .3) {
+      return mk(`My boss made me ___ until six.`, 'work', ['to work', 'working', 'worked'], null,
+        `<b>make somebody + base verb</b>, with no "to": made me <b>work</b>.`);
+    }
+    if (r < .55) {
+      return mk(`My parents let me ___ out at the weekend.`, 'go', ['to go', 'going', 'went'], null,
+        `<b>let somebody + base verb</b>, with no "to": let me <b>go</b>.`);
+    }
+    if (r < .8) {
+      return mk(`The teacher allowed us ___ the dictionary.`, 'to use', ['use', 'using', 'used'], null,
+        `<b>allow somebody + to-infinitive</b> — unlike "let", this verb keeps the "to".`);
+    }
+    return mk(`We ___ to take photographs inside the museum.`, "weren't allowed",
+      ["weren't let", "didn't let", "weren't made"], null,
+      `"Let" has no passive form, so the passive of permission is <b>be allowed to</b>.`);
+  }
+});
+
+topic({
+  id: 'purpose', lvl: 'B1', em: '🎯', name: 'Expressing purpose',
+  why: ['<b>to + base verb</b> is the normal way to say why: <i>I went out <u>to buy</u> milk.</i>',
+        '<b>in order to / so as to</b> are more formal versions of the same thing.',
+        '<b>so that + clause</b> is used when the subject changes or a modal is needed: <i>I left early <u>so that</u> I wouldn\'t miss the train.</i>',
+        '<b>for + noun</b>, but <b>to + verb</b>: <i>I came here <u>for</u> a meeting</i> / <i><u>to</u> meet the team.</i> Never <s>for to buy</s>.'],
+  ex: ['She went to the shop <em>to buy</em> bread.',
+       'He spoke slowly <em>so that</em> everyone could understand.',
+       'We use it <em>for</em> cleaning windows.'],
+  gen() {
+    const v = pick(V), r = Math.random();
+    if (r < .35) {
+      return mk(`I went into town ___ ${v.c}.`, 'to ' + v.b,
+        ['for ' + v.g, 'for to ' + v.b, 'for ' + v.b, v.g], null,
+        `Purpose with a verb takes the <b>to-infinitive</b>: <b>to ${v.b}</b>. "For" is never followed by a base verb.`);
+    }
+    if (r < .6) {
+      return mk(`She left early ___ she wouldn't miss the train.`, 'so that',
+        ['to', 'for', 'in order to'], null,
+        `When the purpose clause has its own subject and a modal, we use <b>so that + clause</b>.`);
+    }
+    if (r < .8) {
+      return mk(`The committee met ___ discuss the budget.`, 'in order to',
+        ['in order', 'for', 'so that'], null,
+        `<b>In order to</b> is a more formal way of expressing purpose before a verb.`);
+    }
+    return mk(`This machine is used ___ cutting metal.`, 'for',
+      ['to', 'for to', 'in order'], null,
+      `To describe the <b>function</b> of a thing we use <b>for + -ing</b>.`);
+  }
+});
+
+topic({
+  id: 'another', lvl: 'B1', em: '🔄', name: 'another / other / the other',
+  why: ['<b>another</b> (one word) = one more, or a different one — always with a singular countable noun.',
+        '<b>other</b> + plural or uncountable noun: <i>other people, other information</i>.',
+        '<b>the other</b> = the second of two, or the remaining one(s).',
+        '<b>others</b> / <b>the others</b> stand alone with no noun after them.'],
+  ex: ['Would you like <em>another</em> cup?', 'Some people agree; <em>others</em> don\'t.',
+       'One is red, <em>the other</em> is blue.', 'Where are <em>the other</em> students?'],
+  gen() {
+    const items = [
+      ['Would you like ___ cup of tea?', 'another', ['other', 'the other', 'others'], '"Cup" is singular countable and means "one more" → <b>another</b>.'],
+      ['I have two bags: one is red and ___ is blue.', 'the other', ['another', 'other', 'others'], 'The <b>second of two</b> → <b>the other</b>.'],
+      ['Some people love the cold; ___ hate it.', 'others', ['other', 'another', 'the other'], 'Standing alone with no noun after it → <b>others</b>.'],
+      ['Where are the ___ students? Only four are here.', 'other', ['others', 'another', 'the others'], 'Before a <b>plural noun</b> we use <b>other</b>, with no -s.'],
+      ['Three of us arrived early; ___ came late.', 'the others', ['the other', 'another', 'other'], 'The <b>remaining people</b>, standing alone → <b>the others</b>.'],
+      ['Do you have any ___ information about the course?', 'other', ['others', 'another', 'the others'], 'Before an <b>uncountable noun</b> we use <b>other</b>.'],
+      ['This one is broken. Can I try ___?', 'another one', ['other one', 'the other ones', 'another ones'], '"One more / a different one" → <b>another one</b>.'],
+      ['She lives on ___ side of the city.', 'the other', ['another', 'other', 'others'], 'A city has two sides, so we mean the second one → <b>the other</b>.']
+    ];
+    const it = pick(items);
+    return mk(it[0], it[1], it[2], null, it[3]);
+  }
+});
+
+topic({
+  id: 'permission', lvl: 'B1', em: '🙏', name: 'Permission & polite requests',
+  why: ['Asking permission: <b>Can I…?</b> (informal), <b>Could I…?</b> (polite), <b>May I…?</b> (formal).',
+        'Asking somebody else to do something: <b>Could you…? Would you mind + -ing?</b>',
+        'Giving and refusing permission: <i>You can / You may</i>, and <i>You can\'t / You mustn\'t</i>.',
+        'Past permission uses <b>was/were allowed to</b>, not "could", for one specific occasion.'],
+  ex: ['<em>Could I</em> borrow your pen?', '<em>Would you mind</em> waiting a moment?',
+       'You <em>can\'t</em> park here.', 'We <em>were allowed to</em> leave early yesterday.'],
+  gen() {
+    const items = [
+      ['___ I borrow your charger for a minute?', 'Could', ['Should', 'Would', 'Must'], 'A polite request for permission → <b>Could I…?</b>'],
+      ['___ you mind opening the window?', 'Would', ['Could', 'Should', 'Do'], 'The fixed polite form is <b>Would you mind + -ing?</b>'],
+      ['Would you mind ___ a little longer?', 'waiting', ['to wait', 'wait', 'waited'], 'After "would you mind" we use the <b>-ing</b> form.'],
+      ['This is a hospital — you ___ use your phone here.', "mustn't", ["don't have to", "needn't", 'could not'], 'Something forbidden → <b>mustn\'t</b>.'],
+      ['We ___ to leave early yesterday because of the storm.', 'were allowed', ['could', 'can', 'were let'], 'For permission on <b>one specific occasion</b> in the past we use <b>was/were allowed to</b>.'],
+      ['___ I ask you a personal question?', 'May', ['Must', 'Should', 'Will'], 'The most formal way of asking permission is <b>May I…?</b>'],
+      ['Of course you ___ use the kitchen whenever you like.', 'can', ['could to', 'may to', 'are allow'], 'Giving permission → <b>can</b> + base verb.'],
+      ['___ you pass me the salt, please?', 'Could', ['Should', 'May', 'Must'], 'Asking somebody <b>else</b> to do something politely → <b>Could you…?</b>']
+    ];
+    const it = pick(items);
+    return mk(it[0], it[1], it[2], null, it[3]);
+  }
+});
+
+topic({
+  id: 'compmod', lvl: 'B1', em: '📊', name: 'Making comparatives stronger or weaker',
+  why: ['Stronger: <b>much, far, a lot, considerably</b> + comparative → <i>much better, far more expensive</i>.',
+        'Weaker: <b>a bit, a little, slightly</b> + comparative → <i>a bit colder</i>.',
+        '<b>Never use "very" with a comparative</b>: <s>very better</s> → <b>much better</b>.',
+        'With superlatives use <b>by far</b>: <i>by far the best</i>. And <b>even</b> + comparative shows an increase: <i>even worse</i>.'],
+  ex: ['This one is <em>much</em> cheaper.', 'It\'s <em>a bit</em> colder today.',
+       'That was <em>by far</em> the best film.', '<s>very better</s> → <em>much better</em>'],
+  gen() {
+    const a = pick(ADJ.filter(x => ['big', 'small', 'fast', 'cheap', 'expensive', 'difficult', 'comfortable', 'good', 'bad', 'interesting'].indexOf(x.b) >= 0));
+    const r = Math.random();
+    if (r < .4) {
+      return mk(`This laptop is ___ ${a.c} than mine.`, 'much', ['very', 'too', 'so'], null,
+        `A comparative is made stronger with <b>much / far / a lot</b> — never with "very".`);
+    }
+    if (r < .65) {
+      return mk(`It's only ___ ${a.c} than yesterday — almost the same.`, 'a bit',
+        ['very', 'much more', 'too'], null,
+        `A small difference takes <b>a bit / a little / slightly</b> + comparative.`);
+    }
+    if (r < .85) {
+      return mk(`That was ___ the best meal of the holiday.`, 'by far', ['much', 'very', 'a lot'], null,
+        `With a <b>superlative</b> we use <b>by far</b>, not "much".`);
+    }
+    return mk(`The second half of the film was ___ worse than the first.`, 'even',
+      ['very', 'much the', 'so'], null,
+      `<b>Even</b> + comparative shows that something is more extreme than before.`);
+  }
+});
+
+topic({
+  id: 'vobjinf', lvl: 'B1', em: '🗣️', name: 'Verb + object + to-infinitive',
+  why: ['Many verbs follow the pattern <b>verb + somebody + to + base verb</b>.',
+        'Common ones: want, ask, tell, advise, expect, persuade, remind, encourage, invite, warn, allow, teach.',
+        'The object is a person, not a that-clause: <s>I want that you come</s> → <i>I want <u>you to come</u>.</i>',
+        'Careful exceptions: <b>suggest</b> and <b>recommend</b> do <b>not</b> take this pattern — use a that-clause or -ing.'],
+  ex: ['I <em>want you to</em> help me.', 'She <em>told me to</em> wait outside.',
+       'They <em>persuaded him to</em> stay.', '<s>He suggested me to go</s> → He suggested that I go.'],
+  gen() {
+    const v = pick(V), r = Math.random();
+    const verbs = ['asked', 'told', 'advised', 'expected', 'persuaded', 'reminded', 'encouraged', 'warned', 'invited'];
+    if (r < .35) {
+      const s = pick(SUBJ.slice(0, 6).filter(x => x.n !== 'I' && x.o !== x.n.toLowerCase()));
+      return mk(`I want ___ to ${v.b} ${v.c}.`, s.o, [s.n.toLowerCase(), 'that ' + s.n.toLowerCase(), s.p, 'to ' + s.o], null,
+        `After "want" we need an <b>object pronoun</b> + to-infinitive: want <b>${s.o}</b> to ${v.b}.`);
+    }
+    if (r < .7) {
+      const w = pick(verbs);
+      return mk(`She ${w} me ___ ${v.c}.`, 'to ' + v.b, [v.b, v.g, 'that I ' + v.b], null,
+        `"${cap(w)}" follows the pattern <b>verb + object + to-infinitive</b>: <b>to ${v.b}</b>.`);
+    }
+    return mk(`He suggested ___ the train instead of driving.`, 'taking',
+      ['me to take', 'to take', 'that take'], null,
+      `<b>Suggest</b> never takes "somebody to do". Use <b>-ing</b> or a that-clause.`);
+  }
+});
+
+topic({
+  id: 'indirectq', lvl: 'B1', em: '🤔', name: 'Indirect & polite questions',
+  why: ['Polite questions begin with a phrase such as <i>Could you tell me…, Do you know…, I wonder…</i>',
+        'After that phrase the word order is a <b>statement</b>, not a question: <i>Do you know where <u>the station is</u>?</i>',
+        'Do not use do/does/did in the second part: <s>Do you know where does he live?</s>',
+        'For yes-no questions use <b>if</b> or <b>whether</b>: <i>Could you tell me if the shop is open?</i>'],
+  ex: ['Could you tell me where <em>the bank is</em>?',
+       'Do you know what time <em>the film starts</em>?',
+       'I wonder <em>if</em> she is coming.'],
+  gen() {
+    const items = [
+      ['Could you tell me where ___?', 'the station is', ['is the station', 'does the station is', 'the station does be'], 'After "Could you tell me" the word order is a <b>statement</b>: <b>the station is</b>.'],
+      ['Do you know what time ___?', 'the film starts', ['does the film start', 'starts the film', 'the film does start'], 'No auxiliary is used in an indirect question: <b>the film starts</b>.'],
+      ['I wonder ___ she is coming to the party.', 'if', ['that', 'does', 'what'], 'A reported yes-no question takes <b>if</b> or <b>whether</b>.'],
+      ['Could you tell me ___ the shop closes at six?', 'whether', ['that', 'does', 'what'], '<b>Whether</b> (or "if") introduces an indirect yes-no question.'],
+      ['Do you have any idea how much ___?', 'it costs', ['does it cost', 'costs it', 'it does cost'], 'Statement order again: <b>it costs</b>.'],
+      ['I\'d like to know why ___ so late.', 'he arrived', ['did he arrive', 'he did arrive', 'arrived he'], 'No "did" in an indirect question: <b>he arrived</b>.'],
+      ['Can you remember where ___ the keys?', 'you put', ['did you put', 'you did put', 'put you'], 'Indirect questions keep <b>statement</b> word order: <b>you put</b>.']
+    ];
+    const it = pick(items);
+    return mk(it[0], it[1], it[2], null, it[3]);
+  }
+});
+
+topic({
+  id: 'agreement', lvl: 'B2', em: '🧮', name: 'Subject–verb agreement',
+  why: ['<b>everyone, everybody, nobody, each, either, neither</b> take a <b>singular</b> verb.',
+        '<b>Neither of / either of / none of</b> + plural noun normally take a singular verb in formal writing.',
+        '<b>The number of</b> … is singular; <b>a number of</b> … is plural.',
+        'Some nouns look plural but are singular: <i>news, mathematics, politics</i>. Others look singular but are plural: <i>police, people, staff</i>.',
+        'With <b>neither … nor</b> and <b>either … or</b>, the verb agrees with the <b>nearer</b> subject.'],
+  ex: ['Everyone <em>is</em> waiting outside.', 'Neither of the answers <em>is</em> correct.',
+       'The police <em>are</em> investigating.', 'The news <em>was</em> surprising.'],
+  gen() {
+    const items = [
+      ['Everyone ___ already arrived.', 'has', ['have', 'are', 'were'], '<b>Everyone</b> is grammatically singular → <b>has</b>.'],
+      ['Neither of the two answers ___ correct.', 'is', ['are', 'were', 'have'], '<b>Neither of</b> takes a <b>singular</b> verb in careful English.'],
+      ['The police ___ still investigating the case.', 'are', ['is', 'was', 'has'], '<b>Police</b> is always plural in English → <b>are</b>.'],
+      ['The news ___ better than we expected.', 'was', ['were', 'have been', 'are'], '<b>News</b> looks plural but is <b>uncountable and singular</b>.'],
+      ['A number of students ___ absent today.', 'are', ['is', 'was', 'has'], '<b>A number of</b> means "several", so the verb is <b>plural</b>.'],
+      ['The number of applicants ___ risen sharply.', 'has', ['have', 'are', 'were'], '<b>The number</b> is the subject and it is <b>singular</b> → has.'],
+      ['Each of the rooms ___ its own bathroom.', 'has', ['have', 'are having', 'were'], '<b>Each of</b> takes a <b>singular</b> verb.'],
+      ['Neither the manager nor the staff ___ happy about it.', 'are', ['is', 'has', 'was'], 'With <b>neither … nor</b> the verb agrees with the <b>nearer</b> subject ("staff").'],
+      ['Mathematics ___ my favourite subject at school.', 'was', ['were', 'have been', 'are'], 'Subjects ending in -ics are <b>singular</b>.'],
+      ['Twenty miles ___ a long way to walk.', 'is', ['are', 'were', 'have been'], 'A distance treated as <b>one amount</b> takes a singular verb.'],
+      ['My family ___ coming to visit this weekend.', 'are', ['is being', 'has', 'was'], 'A collective noun can take a plural verb in British English when we think of the <b>individuals</b>.'],
+      ['There ___ several reasons for the delay.', 'were', ['was', 'has been', 'is'], 'The real subject is "reasons", which is <b>plural</b>.']
+    ];
+    const it = pick(items);
+    return mk(it[0], it[1], it[2], null, it[3]);
+  }
+});
+
+topic({
+  id: 'phrasalorder', lvl: 'B2', em: '🧲', name: 'Phrasal verb word order',
+  why: ['<b>Separable</b> phrasal verbs can take the object in the middle or at the end: <i>turn off the light / turn the light off</i>.',
+        'But a <b>pronoun</b> must go in the middle: <i>turn <u>it</u> off</i>, never <s>turn off it</s>.',
+        '<b>Inseparable</b> verbs keep the particle attached: <i>look after them</i>, never <s>look them after</s>.',
+        'Three-part verbs are always inseparable: <i>put up with it, look forward to it.</i>'],
+  ex: ['Turn <em>it</em> off. (not <s>turn off it</s>)',
+       'She looks after <em>them</em>. (not <s>looks them after</s>)',
+       'I can\'t put up with <em>it</em>.'],
+  gen() {
+    const items = [
+      ['The light is still on. Could you ___, please?', 'turn it off', ['turn off it', 'turn off them', 'it turn off'], 'With a <b>pronoun</b> object, a separable phrasal verb must split: <b>turn it off</b>.'],
+      ['I don\'t know this word. I\'ll ___ in the dictionary.', 'look it up', ['look up it', 'it look up', 'look up them'], 'Pronoun in the middle: <b>look it up</b>.'],
+      ['She has two cats and her neighbour ___ when she travels.', 'looks after them', ['looks them after', 'looks after they', 'them looks after'], '"Look after" is <b>inseparable</b>, so the object always comes after the particle.'],
+      ['The music is too loud. Please ___.', 'turn it down', ['turn down it', 'turn down them', 'it turn down'], 'Pronoun objects always go in the middle of a separable phrasal verb.'],
+      ['I can\'t ___ any longer — the noise is unbearable.', 'put up with it', ['put it up with', 'put up it with', 'put up with them it'], 'Three-part phrasal verbs are <b>never</b> split: <b>put up with it</b>.'],
+      ['Here are the forms. Please ___ and return them.', 'fill them in', ['fill in them', 'them fill in', 'fill in they'], 'Pronoun in the middle: <b>fill them in</b>.'],
+      ['The meeting was cancelled — they ___ yesterday.', 'called it off', ['called off it', 'it called off', 'called off them'], 'Pronoun objects split the verb: <b>called it off</b>.'],
+      ['I\'m really ___ to the holiday next month.', 'looking forward', ['looking it forward', 'forward looking', 'looking forward it'], '"Look forward to" is a three-part verb; the object goes at the very end.']
+    ];
+    const it = pick(items);
+    return mk(it[0], it[1], it[2], null, it[3]);
+  }
+});
+
+topic({
+  id: 'themore', lvl: 'B2', em: '📈', name: 'The more … the more',
+  why: ['<b>The + comparative …, the + comparative …</b> shows that two things change together.',
+        '<i>The more you practise, the better you get.</i>',
+        'Both halves need <b>the</b>, and both need a comparative form.',
+        'Short answers drop the second clause: <i>The sooner, the better.</i>',
+        'Repeating a comparative shows gradual change: <i>It\'s getting <u>colder and colder</u>.</i>'],
+  ex: ['<em>The more</em> I read, <em>the more</em> I understand.',
+       '<em>The sooner</em> we leave, <em>the better</em>.',
+       'Prices are getting <em>higher and higher</em>.'],
+  gen() {
+    const a = pick(ADJ.filter(x => x.t !== 'long')), r = Math.random();
+    if (r < .35) {
+      return mk(`___ you practise, the better you get.`, 'The more',
+        ['More', 'The most', 'The much'], null,
+        `The structure needs <b>the + comparative</b> in both halves: <b>The more…, the better…</b>`);
+    }
+    if (r < .6) {
+      return mk(`The sooner we leave, ___.`, 'the better', ['better', 'the best', 'the more good'], null,
+        `The second half also takes <b>the + comparative</b>: <b>the better</b>.`);
+    }
+    if (r < .8) {
+      return mk(`The weather is getting ___ every day.`, `${a.c} and ${a.c}`,
+        [`${a.b} and ${a.b}`, `more ${a.c}`, `the ${a.c}`], null,
+        `A repeated comparative shows gradual change: <b>${a.c} and ${a.c}</b>.`);
+    }
+    return mk(`___ it gets, the more people complain.`, 'The hotter',
+      ['Hotter', 'The hottest', 'The more hot'], null,
+      `Short adjectives form this structure with <b>the + -er</b>: <b>The hotter…</b>`);
+  }
+});
+
+topic({
+  id: 'neednt', lvl: 'B2', em: '🧯', name: 'needn\'t have / didn\'t need to',
+  why: ['<b>didn\'t need to do</b> = it was not necessary, so (usually) you did not do it.',
+        '<b>needn\'t have done</b> = you <b>did</b> it, but it turned out to be unnecessary.',
+        'Present: <b>needn\'t / don\'t need to</b> + base verb = no obligation.',
+        'Compare with <b>mustn\'t</b>, which means it is forbidden — a completely different meaning.'],
+  ex: ['I <em>needn\'t have cooked</em> — they had already eaten. (I cooked anyway)',
+       'We <em>didn\'t need to pay</em>; entry was free. (so we didn\'t pay)',
+       'You <em>needn\'t</em> come early tomorrow.'],
+  gen() {
+    const items = [
+      ['I ___ dinner — everyone had already eaten before I started.', "needn't have cooked", ["didn't need to cook", "mustn't have cooked", 'needn\'t cook'], 'You <b>did</b> cook, and it turned out to be unnecessary → <b>needn\'t have + past participle</b>.'],
+      ['Entry was free, so we ___ anything at all.', "didn't need to pay", ["needn't have paid", "mustn't pay", "didn't need pay"], 'It was not necessary, and you did not do it → <b>didn\'t need to</b>.'],
+      ['You ___ come early tomorrow — the meeting starts at ten.', "needn't", ["mustn't", "didn't need", 'not need to'], 'No obligation in the present → <b>needn\'t</b> + base verb.'],
+      ['He ___ worried so much; the test was easy.', "needn't have", ["didn't need to", "mustn't have", 'not need'], 'He <b>did</b> worry, unnecessarily → <b>needn\'t have + participle</b>.'],
+      ['This is a quiet zone — you ___ use your phone here.', "mustn't", ["needn't", "don't need to", "didn't need to"], 'Forbidden, not merely unnecessary → <b>mustn\'t</b>.'],
+      ['We ___ book in advance, but we did it anyway to be safe.', "didn't need to", ["needn't have", "mustn't", 'needn\'t to'], 'The necessity was known in advance and it was not there → <b>didn\'t need to</b>.']
+    ];
+    const it = pick(items);
+    return mk(it[0], it[1], it[2], null, it[3]);
+  }
+});
+
+topic({
+  id: 'passive2', lvl: 'B2', em: '🎁', name: 'Passive with two objects',
+  why: ['Verbs such as <b>give, send, offer, tell, show, pay, award, teach, promise</b> take two objects.',
+        'Either object can become the subject of the passive, but the <b>person</b> version is far more common.',
+        '<i>They gave Anna a prize</i> → <b>Anna was given a prize.</b> (common)',
+        '→ <i>A prize was given to Anna.</i> (also correct, note the added "to")'],
+  ex: ['She <em>was given</em> a prize.', 'We <em>were told</em> that the shop was closed.',
+       'The staff <em>were offered</em> a pay rise.'],
+  gen() {
+    const sets = [
+      ['give', 'given', 'a prize'], ['send', 'sent', 'the documents'], ['offer', 'offered', 'a better job'],
+      ['tell', 'told', 'the bad news'], ['show', 'shown', 'the new building'], ['pay', 'paid', 'a bonus'],
+      ['award', 'awarded', 'a scholarship'], ['teach', 'taught', 'French at school'], ['promise', 'promised', 'a full refund']
+    ];
+    const s = pick(sets), r = Math.random();
+    if (r < .5) {
+      return mk(`The winners were ___ ${s[2]} at the ceremony.`, s[1],
+        [s[0], s[0] + 'ing', 'being ' + s[0]], null,
+        `The passive needs the <b>past participle</b>: ${s[0]} → <b>${s[1]}</b>.`);
+    }
+    if (r < .8) {
+      return mk(`Anna ___ ${s[2]} last week.`, 'was ' + s[1],
+        [s[1], 'was ' + s[0], 'has ' + s[0]], null,
+        `The <b>person</b> becomes the subject: Anna <b>was ${s[1]}</b> ${s[2]}.`);
+    }
+    return mk(`The documents were sent ___ every member of staff.`, 'to',
+      ['for', 'by to', 'at'], null,
+      `When the <b>thing</b> becomes the subject of the passive, the person takes <b>to</b>: sent <b>to</b> the staff.`);
+  }
+});
+
+topic({
+  id: 'reportverbs', lvl: 'B2', em: '📣', name: 'Reporting verb patterns',
+  why: ['Each reporting verb has its own fixed pattern — learn the verb and the pattern together.',
+        '<b>verb + -ing</b>: admit, deny, suggest, recommend, mention.',
+        '<b>verb + to-infinitive</b>: promise, refuse, offer, threaten, agree, claim.',
+        '<b>verb + object + to-infinitive</b>: advise, warn, remind, persuade, invite, tell.',
+        '<b>verb + preposition + -ing</b>: apologise <u>for</u>, accuse somebody <u>of</u>, insist <u>on</u>, congratulate somebody <u>on</u>, blame somebody <u>for</u>.'],
+  ex: ['He <em>admitted taking</em> the money.', 'She <em>refused to answer</em>.',
+       'They <em>accused him of</em> lying.', 'He <em>apologised for</em> being late.'],
+  gen() {
+    const items = [
+      ['He admitted ___ the money from the drawer.', 'taking', ['to take', 'take', 'that taking'], '<b>Admit</b> is followed by the <b>-ing</b> form.'],
+      ['She refused ___ any of my questions.', 'to answer', ['answering', 'answer', 'that answer'], '<b>Refuse</b> takes the <b>to-infinitive</b>.'],
+      ['They accused him ___ the documents.', 'of forging', ['to forge', 'for forging', 'forging of'], '<b>Accuse somebody of + -ing</b>.'],
+      ['He apologised ___ late.', 'for being', ['to be', 'being', 'of being'], '<b>Apologise for + -ing</b>.'],
+      ['The doctor advised me ___ more exercise.', 'to take', ['taking', 'take', 'that take'], '<b>Advise somebody to + base verb</b>.'],
+      ['She denied ___ anything about the plan.', 'knowing', ['to know', 'know', 'of knowing'], '<b>Deny</b> is followed by the <b>-ing</b> form.'],
+      ['He insisted ___ for the meal.', 'on paying', ['to pay', 'paying', 'for paying'], '<b>Insist on + -ing</b>.'],
+      ['They congratulated her ___ the competition.', 'on winning', ['to win', 'for winning', 'of winning'], '<b>Congratulate somebody on + -ing</b>.'],
+      ['She promised ___ as soon as she arrived.', 'to call', ['calling', 'call', 'that calling'], '<b>Promise</b> takes the <b>to-infinitive</b>.'],
+      ['He warned us ___ that road after dark.', 'not to use', ['not using', "don't use", 'to not using'], '<b>Warn somebody (not) to + base verb</b>.'],
+      ['She suggested ___ the train instead.', 'taking', ['to take', 'us to take', 'take'], '<b>Suggest</b> takes <b>-ing</b> or a that-clause, never "somebody to do".'],
+      ['They blamed the driver ___ the accident.', 'for causing', ['to cause', 'of causing', 'causing'], '<b>Blame somebody for + -ing</b>.'],
+      ['He offered ___ me to the station.', 'to drive', ['driving', 'drive', 'that drive'], '<b>Offer</b> takes the <b>to-infinitive</b>.'],
+      ['The manager reminded us ___ the report by Friday.', 'to send', ['sending', 'send', 'of send'], '<b>Remind somebody to + base verb</b>.']
+    ];
+    const it = pick(items);
+    return mk(it[0], it[1], it[2], null, it[3]);
+  }
+});
+
+/* ===================== P  PUNCTUATION ===================== */
+
+const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const COUNTRIES = ['France', 'Japan', 'Brazil', 'Germany', 'Italy', 'Egypt', 'Canada', 'Spain', 'Thailand', 'Norway'];
+const LANGS = ['English', 'Spanish', 'Japanese', 'French', 'German', 'Italian', 'Arabic', 'Korean'];
+const CLAUSE_A = ['It was raining hard', 'The shop was already closed', 'We were all very tired',
+  'The train was an hour late', 'I lost my keys', 'She felt ill that morning',
+  'The food was cold', 'The exam was difficult', 'The meeting finished early', 'My phone had no battery'];
+const CLAUSE_B = [['so', 'we stayed at home'], ['so', 'we took a taxi'], ['but', 'nobody complained'],
+  ['and', 'everyone went home'], ['so', 'we started without him'], ['but', 'we finished on time'],
+  ['and', 'the room was freezing'], ['so', 'I had to borrow one']];
+const CLAUSE_C = ['we went home', 'nobody noticed', 'the class was cancelled', 'we had to wait',
+  'everyone was relieved', 'I called a taxi', 'she stayed in bed'];
+const INTROS = [
+  ['After the meeting', 'an introductory phrase'], ['Before you leave', 'an introductory clause'],
+  ['In my opinion', 'an introductory phrase'], ['However', 'a linking word'],
+  ['Unfortunately', 'a comment adverb'], ['By the end of the day', 'a long introductory phrase'],
+  ['Although it was late', 'an introductory clause'], ['As a result', 'a linking phrase'],
+  ['For example', 'a linking phrase'], ['On the other hand', 'a linking phrase'],
+  ['When she arrived', 'an introductory clause'], ['To be honest', 'a comment phrase'],
+  ['Nevertheless', 'a linking word'], ['In fact', 'a linking phrase']
+];
+const INTRO_REST = ['we went for lunch', 'the office was empty', 'nobody had any questions',
+  'the plan worked perfectly', 'we decided to wait', 'she changed her mind', 'the price went up'];
+const RELATIVES = ['My sister', 'My brother', 'My boss', 'Our neighbour', 'My cousin', 'Her father', 'My colleague'];
+const REL_INFO = ['who lives in Canada', 'who works in Berlin', 'who speaks four languages',
+  'who retired last year', 'who studied medicine', 'who runs a café'];
+const REL_END = ['is a nurse', 'is an engineer', 'is coming to visit', 'has just bought a house', 'teaches at my school'];
+const SAYINGS = ["I'll be late", "I'm really tired", "We need to leave now", "The meeting is cancelled",
+  "I can't find my keys", "Dinner is ready", "It's going to rain"];
+
+topic({
+  id: 'punc-capitals', lvl: 'P', em: '🔠', name: 'Capital letters', fmt: ['mcq'],
+  why: ['Capitalise the <b>first word of a sentence</b> and the pronoun <b>I</b> — always.',
+        'Capitalise <b>proper nouns</b>: names, countries, cities, companies, brands.',
+        'Capitalise <b>days, months and festivals</b> — but <b>not</b> seasons: Monday, July, Christmas, but summer.',
+        'Capitalise <b>languages and nationalities</b>: English, Japanese, Brazilian.',
+        'Do <b>not</b> capitalise ordinary nouns just because they feel important: <s>my Teacher</s> → my teacher.'],
+  ex: ['We meet every <em>Monday</em> in <em>March</em>.', 'She speaks <em>English</em> and <em>Arabic</em>.',
+       'My friend and <em>I</em> went to <em>Japan</em>.', 'I love <em>summer</em>. (season — no capital)'],
+  gen() {
+    const r = Math.random();
+    if (r < .16) {
+      const d = pick(DAYS);
+      return mk(`We always meet on ___.`, d, [d.toLowerCase(), d.toUpperCase(), d.toLowerCase() + 's'], null,
+        `Days of the week are proper nouns, so <b>${d}</b> takes a capital letter.`);
+    }
+    if (r < .32) {
+      const m = pick(MONTHS);
+      return mk(`Her birthday is in ___.`, m, [m.toLowerCase(), m.toUpperCase(), 'the ' + m.toLowerCase()], null,
+        `Months always take a capital: <b>${m}</b>.`);
+    }
+    if (r < .46) {
+      const c = pick(COUNTRIES);
+      return mk(`They moved to ___ last year.`, c, [c.toLowerCase(), c.toUpperCase(), 'the ' + c.toLowerCase()], null,
+        `Countries are proper nouns: <b>${c}</b>.`);
+    }
+    if (r < .6) {
+      const l = pick(LANGS);
+      return mk(`She speaks fluent ___.`, l, [l.toLowerCase(), l.toUpperCase(), 'the ' + l.toLowerCase()], null,
+        `Languages and nationalities take a capital: <b>${l}</b>.`);
+    }
+    if (r < .72) {
+      const p = pick(PEOPLE);
+      return mk(`I saw ___ at the station.`, p, [p.toLowerCase(), p.toUpperCase(), 'the ' + p.toLowerCase()], null,
+        `People's names are proper nouns: <b>${p}</b>.`);
+    }
+    if (r < .86) {
+      return mk(`My friend and ___ went out for dinner.`, 'I', ['i', 'me', 'myself'], null,
+        `The pronoun <b>I</b> is always a capital letter, wherever it appears.`);
+    }
+    const season = pick(['summer', 'winter', 'spring', 'autumn']);
+    return mk(`We always travel in ___.`, season, [cap(season), season.toUpperCase(), 'the ' + cap(season)], null,
+      `Seasons are <b>not</b> capitalised in English: <b>${season}</b>, not "${cap(season)}".`);
+  }
+});
+
+topic({
+  id: 'punc-sentence', lvl: 'P', em: '🛑', name: 'Full stops & comma splices', fmt: ['mcq'],
+  why: ['A full stop ends a complete sentence, and the next sentence starts with a capital letter.',
+        'Two complete sentences cannot be joined by a comma alone — that mistake is called a <b>comma splice</b>.',
+        'To join two complete sentences, use: a full stop, a <b>semicolon</b>, or a <b>comma + and / but / so / or</b>.',
+        'A sentence with no punctuation between the two halves is a <b>run-on</b> sentence.'],
+  ex: ['I finished work<em>.</em> Then I went home.', 'It was raining<em>, so</em> we stayed in.',
+       'The shop was closed<em>;</em> we went home.', '<s>It was raining, we stayed in.</s> — comma splice'],
+  gen() {
+    const r = Math.random();
+    if (r < .4) {
+      const a = pick(CLAUSE_A), b = pick(CLAUSE_B);
+      return mk(`${a}___ ${b[0]} ${b[1]}.`, ',', [';', ':', 'no punctuation'], null,
+        `Two complete sentences joined by <b>${b[0]}</b> take a <b>comma</b> before the conjunction.`);
+    }
+    if (r < .75) {
+      const a = pick(CLAUSE_A), c = pick(CLAUSE_C);
+      return mk(`${a}___ ${c}.`, ';', [',', ':', 'no punctuation'], null,
+        `These are two complete sentences with no joining word. A <b>comma</b> here would be a comma splice — use a <b>semicolon</b> (or a full stop, or add "so"/"and").`);
+    }
+    const a = pick(CLAUSE_A);
+    return mk(`${a}___ Then we went home.`, '.', [',', ';', 'no punctuation'], null,
+      `"Then" starts with a capital letter, so the sentence before it must end with a <b>full stop</b>.`);
+  }
+});
+
+topic({
+  id: 'punc-list', lvl: 'P', em: '📝', name: 'Commas in lists', fmt: ['mcq'],
+  why: ['Separate three or more items with commas: <i>bread, milk and eggs</i>.',
+        'The comma goes <b>after</b> the word, with a space after it — never before it.',
+        'The comma before the final "and" (the Oxford comma) is optional, but be consistent.',
+        'Use commas between adjectives of the same type: <i>a long, hot, tiring day</i>.'],
+  ex: ['We bought <em>bread, milk</em> and cheese.', 'It was a <em>long, hot</em> summer.',
+       '<s>bread , milk</s> — no space before a comma.'],
+  gen() {
+    if (Math.random() < .55) {
+      const ns = pickN(NOUNC, 3);
+      const a = NPLUR[ns[0]], b = NPLUR[ns[1]], c = NPLUR[ns[2]];
+      return mk(`The shop sells ___ and ${c}.`, `${a}, ${b}`,
+        [`${a} ${b}`, `${a}; ${b}`, `${a} , ${b}`], null,
+        `List items are separated by a comma straight after the word, then a space: <b>${a}, ${b}</b>.`);
+    }
+    const adjs = pickN(['long', 'hot', 'tiring', 'cold', 'quiet', 'busy', 'dark', 'noisy'], 2);
+    const n = pick(['day', 'week', 'morning', 'journey', 'evening']);
+    return mk(`It was a ___ ${n}.`, `${adjs[0]}, ${adjs[1]}`,
+      [`${adjs[0]} ${adjs[1]}`, `${adjs[0]}; ${adjs[1]}`, `${adjs[0]} and, ${adjs[1]}`], null,
+      `Two adjectives of the same type are separated by a <b>comma</b>: "a ${adjs[0]}, ${adjs[1]} ${n}".`);
+  }
+});
+
+topic({
+  id: 'punc-intro', lvl: 'P', em: '↪️', name: 'Commas after introductions', fmt: ['mcq'],
+  why: ['Put a comma after an introductory word, phrase or clause that comes before the main sentence.',
+        'This includes linking words: <i>However, Therefore, For example, As a result</i>.',
+        'And introductory clauses: <i>When she arrived, …  Although it was late, …</i>',
+        'If the same clause comes second, no comma is needed: <i>We left although it was late.</i>'],
+  ex: ['<em>After the meeting,</em> we went for lunch.', '<em>However,</em> nobody complained.',
+       'We went for lunch after the meeting. (no comma — the clause is second)'],
+  gen() {
+    if (Math.random() < .75) {
+      const i = pick(INTROS);
+      return mk(`${i[0]}___ ${pick(INTRO_REST)}.`, ',', [';', ':', 'no punctuation'], null,
+        `"${i[0]}" is ${i[1]} at the start of the sentence, so it is followed by a <b>comma</b>.`);
+    }
+    const i = pick(INTROS.filter(x => /^(After|Before|Although|When)/.test(x[0])));
+    const rest = pick(INTRO_REST);
+    return mk(`${cap(rest)} ___ ${low(i[0])}.`, 'no comma', [',', ';', ':'], null,
+      `When the clause comes <b>second</b>, no comma is needed: "${cap(rest)} ${low(i[0])}."`);
+  }
+});
+
+topic({
+  id: 'punc-clauses', lvl: 'P', em: '✂️', name: 'Commas around extra information', fmt: ['mcq'],
+  why: ['Extra, non-essential information is wrapped in a <b>pair of commas</b>: <i>My sister, who lives in Canada, is a nurse.</i>',
+        'Essential information that identifies which one takes <b>no commas</b>: <i>The woman who called you is waiting.</i>',
+        'A quick test: if you can remove the clause and the sentence still makes sense, use commas.',
+        'The same rule applies to names: <i>My boss, Anna, is on holiday.</i>'],
+  ex: ['My brother<em>, who works in Berlin,</em> is an engineer. (extra)',
+       'The man <em>who called</em> is my boss. (essential — no commas)'],
+  gen() {
+    if (Math.random() < .5) {
+      const r = pick(RELATIVES), i = pick(REL_INFO), e = pick(REL_END);
+      return mk(`${r}___ ${i}, ${e}.`, ',', [';', ':', 'no comma'], null,
+        `"${i}" is extra information about a person we have already identified, so it needs a <b>pair of commas</b> around it.`);
+    }
+    const n = pick(['woman', 'man', 'student', 'driver', 'neighbour']);
+    const i = pick(['who called you', 'who lives next door', 'who fixed the heating', 'who won the prize']);
+    return mk(`The ${n} ___ ${i} is waiting outside.`, 'no comma', [',', ';', ':'], null,
+      `"${i}" tells us <b>which</b> ${n}, so it is essential information — <b>no commas</b>.`);
+  }
+});
+
+topic({
+  id: 'punc-poss', lvl: 'P', em: '🔑', name: 'Apostrophes for possession', fmt: ['mcq'],
+  why: ['Singular owner: add <b>\'s</b> → <i>Anna\'s car, the dog\'s bowl</i>.',
+        'Plural owner already ending in -s: add only an <b>apostrophe</b> → <i>the players\' changing room</i>.',
+        'Irregular plural: add <b>\'s</b> → <i>the children\'s toys, the men\'s team</i>.',
+        'A plain plural never takes an apostrophe: <i>three books</i>, not <s>three book\'s</s>.'],
+  ex: ['That is <em>Tom\'s</em> bag.', 'the <em>students\'</em> results (many students)',
+       'the <em>children\'s</em> playground', 'I bought two <em>tickets</em>. (no apostrophe)'],
+  gen() {
+    const r = Math.random();
+    if (r < .3) {
+      const p = pick(PEOPLE), n = pick(NOUNC);
+      return mk(`That is ___ ${n}. (it belongs to ${p})`, p + "'s", [p + 's', p + "s'", "the " + p], null,
+        `One owner → add <b>'s</b>: <b>${p}'s</b>.`);
+    }
+    if (r < .55) {
+      const g = pick([['players', 'changing room'], ['students', 'results'], ['teachers', 'meeting'], ['neighbours', 'garden'], ['girls', 'team']]);
+      return mk(`the ___ ${g[1]} (several ${g[0]})`, g[0] + "'", [g[0], g[0] + "'s", g[0].slice(0, -1) + "'s"], null,
+        `A plural already ending in -s takes <b>only an apostrophe</b>: <b>${g[0]}'</b>.`);
+    }
+    if (r < .8) {
+      const g = pick([['children', 'toys'], ['men', 'team'], ['women', 'changing room'], ['people', 'opinions']]);
+      return mk(`the ___ ${g[1]}`, g[0] + "'s", [g[0], g[0] + "'", g[0] + "s'"], null,
+        `"${g[0]}" is an irregular plural, so it takes <b>'s</b>: <b>${g[0]}'s</b>.`);
+    }
+    const n = pick(NOUNC), pl = NPLUR[n];
+    return mk(`I bought three ___ yesterday.`, pl, [n + "'s", pl + "'", pl.slice(0, -1) + "'s"], null,
+      `This is just a plural, not possession, so there is <b>no apostrophe</b>: <b>${pl}</b>.`);
+  }
+});
+
+topic({
+  id: 'punc-contract', lvl: 'P', em: '✍️', name: 'Apostrophes in contractions', fmt: ['mcq'],
+  why: ['An apostrophe replaces the missing letters: <i>do not → don\'t, it is → it\'s</i>.',
+        '<b>it\'s</b> = it is / it has. <b>its</b> = belonging to it. Possessive pronouns never take an apostrophe.',
+        'Same trap: <b>who\'s</b> = who is; <b>whose</b> = belonging to whom. <b>you\'re</b> = you are; <b>your</b> = belonging to you.',
+        'Write <b>could have</b> (could\'ve), never <s>could of</s>.'],
+  ex: ['<em>It\'s</em> raining. ~ The dog hurt <em>its</em> paw.',
+       '<em>You\'re</em> late. ~ Is this <em>your</em> coat?', 'I <em>could have</em> helped.'],
+  gen() {
+    const items = [
+      ['___ raining again.', "It's", ['Its', 'Its\'', 'It is\''], "<b>It's</b> = it is. The possessive <b>its</b> has no apostrophe."],
+      ['The cat hurt ___ paw.', 'its', ["it's", "its'", "it is"], 'Belonging to it → <b>its</b>, with no apostrophe.'],
+      ['___ coming to the party tonight?', "Who's", ['Whose', 'Whos', "Whose'"], "<b>Who's</b> = who is."],
+      ['___ bag is this?', 'Whose', ["Who's", 'Whos', "Whos'"], 'Belonging to whom → <b>whose</b>.'],
+      ['___ going to be late.', "You're", ['Your', 'Youre', "Your'e"], "<b>You're</b> = you are."],
+      ['Is this ___ coat?', 'your', ["you're", 'youre', "your'e"], 'Belonging to you → <b>your</b>.'],
+      ['___ waiting outside for us.', "They're", ['Their', 'There', "Theyre"], "<b>They're</b> = they are."],
+      ['The students left ___ books on the desk.', 'their', ["they're", 'there', "theirs'"], 'Belonging to them → <b>their</b>.'],
+      ['I ___ helped if you had asked.', 'could have', ['could of', 'could off', "could'of"], 'Write <b>could have</b> (could\'ve) — "could of" is never correct.'],
+      ['We ___ know the answer.', "don't", ['dont', "do'nt", "don´t"], 'The apostrophe replaces the <b>o</b> of "not": <b>don\'t</b>.'],
+      ['She ___ be here until six.', "won't", ['wont', "wo'nt", "will'nt"], '<b>Won\'t</b> is the contraction of "will not".'],
+      ['___ go to the cinema tonight.', "Let's", ['Lets', "Let´s", "Lets'"], "<b>Let's</b> = let us."],
+      ['I ___ seen that film before.', "haven't", ['havent', "have'nt", "haven´t"], 'The apostrophe goes where the <b>o</b> is missing: <b>haven\'t</b>.'],
+      ['___ a long way to the station.', "It's", ['Its', 'Its\'', 'Is'], "<b>It's</b> = it is."]
+    ];
+    const it = pick(items);
+    return mk(it[0], it[1], it[2], null, it[3]);
+  }
+});
+
+topic({
+  id: 'punc-quest', lvl: 'P', em: '❓', name: 'Question & exclamation marks', fmt: ['mcq'],
+  why: ['A direct question ends with <b>?</b> — <i>Where are you going?</i>',
+        'A <b>reported</b> question is a statement, so it ends with a full stop: <i>She asked where I was going.</i>',
+        'Use <b>!</b> for strong feeling or commands, and for <i>What a…! How…!</i> sentences.',
+        'Never double up: write <b>?</b> or <b>!</b>, not <s>?!</s> or <s>!!!</s> in formal writing.'],
+  ex: ['Where do you live<em>?</em>', 'I asked where she lived<em>.</em>',
+       'What a beautiful day<em>!</em>', 'You are coming, aren\'t you<em>?</em>'],
+  gen() {
+    const items = [
+      ['Where are you going___', '?', ['.', '!', ';'], 'A direct question ends with a <b>question mark</b>.'],
+      ['I asked her where she lived___', '.', ['?', '!', ';'], 'This is a <b>reported</b> question — a statement — so it ends with a <b>full stop</b>.'],
+      ['I wonder what time the film starts___', '.', ['?', '!', ':'], '"I wonder…" is a statement, not a question, so use a <b>full stop</b>.'],
+      ['What a beautiful view___', '!', ['.', '?', ';'], '"What a…" sentences express strong feeling → <b>exclamation mark</b>.'],
+      ['How quickly the time has gone___', '!', ['?', '.', ','], '"How + adjective/adverb" exclamations take an <b>exclamation mark</b>.'],
+      ['Could you pass me the salt___', '?', ['.', '!', ','], 'A polite request in question form still takes a <b>question mark</b>.'],
+      ['She asked if I was ready___', '.', ['?', '!', ';'], 'A reported yes-no question is a statement → <b>full stop</b>.'],
+      ['You are coming tonight, aren\'t you___', '?', ['.', '!', ','], 'A question tag turns the sentence into a question → <b>question mark</b>.'],
+      ['Do you know what time it is___', '?', ['.', '!', ';'], 'The main clause "Do you know…" is a direct question → <b>question mark</b>.'],
+      ['Stop___', '!', ['?', ',', ';'], 'A sharp command takes an <b>exclamation mark</b>.'],
+      ['Tell me when you arrive___', '.', ['?', '!', ':'], 'This is an instruction, not a question → <b>full stop</b>.']
+    ];
+    const it = pick(items);
+    return mk(it[0], it[1], it[2], null, it[3]);
+  }
+});
+
+topic({
+  id: 'punc-speech', lvl: 'P', em: '💬', name: 'Quotation marks & direct speech', fmt: ['mcq'],
+  why: ['Put a <b>comma</b> before the opening quotation mark: <i>She said, "I\'m tired."</i>',
+        'The closing punctuation goes <b>inside</b> the quotation marks.',
+        'If the sentence continues after the speech, end the speech with a comma: <i>"I\'m tired," she said.</i>',
+        'Start the speech with a capital letter, and start a new paragraph for each new speaker.'],
+  ex: ['He said<em>,</em> "We need to leave."', '"We need to leave<em>,</em>" he said.',
+       '"Where are you going<em>?</em>" she asked.'],
+  gen() {
+    const r = Math.random(), p = pick(PEOPLE), s = pick(SAYINGS);
+    if (r < .3) {
+      return mk(`${p} said___ "${s}."`, ',', ['.', ':', 'no punctuation'], null,
+        `A <b>comma</b> introduces direct speech: ${p} said, "${s}."`);
+    }
+    if (r < .6) {
+      return mk(`"${s}___" ${p} said.`, ',', ['.', '!', ';'], null,
+        `The sentence continues after the speech, so the quotation ends with a <b>comma</b>, not a full stop.`);
+    }
+    if (r < .8) {
+      const q = pick(['Where are you going', 'What time is it', 'Are you ready', 'Who called']);
+      return mk(`"${q}___" she asked.`, '?', [',', '.', '!'], null,
+        `The quoted words are a question, so the <b>question mark</b> goes inside the quotation marks.`);
+    }
+    return mk(`He shouted, "${pick(['Stop', 'Look out', 'Be careful', 'Wait'])}___"`, '!', [',', '.', '?'], null,
+      `The exclamation belongs to the quoted words, so <b>!</b> goes inside the quotation marks.`);
+  }
+});
+
+topic({
+  id: 'punc-semicolon', lvl: 'P', em: '🔗', name: 'Semicolons', fmt: ['mcq'],
+  why: ['A semicolon joins two complete sentences that are closely related: <i>It was late; we went home.</i>',
+        'Use one before a linking adverb that joins two sentences: <i>…; however, …  …; therefore, …</i>',
+        'Use semicolons to separate list items that already contain commas.',
+        'A semicolon is stronger than a comma and weaker than a full stop. The word after it is <b>not</b> capitalised.'],
+  ex: ['The shop was closed<em>;</em> we went home.',
+       'It was expensive<em>;</em> however, we bought it.',
+       'We visited Paris, France<em>;</em> Rome, Italy<em>;</em> and Madrid, Spain.'],
+  gen() {
+    const r = Math.random();
+    if (r < .4) {
+      const a = pick(CLAUSE_A), c = pick(CLAUSE_C);
+      return mk(`${a}___ ${c}.`, ';', [',', ':', 'no punctuation'], null,
+        `Two closely related complete sentences with no joining word take a <b>semicolon</b>.`);
+    }
+    if (r < .7) {
+      const link = pick(['however', 'therefore', 'nevertheless', 'moreover', 'consequently']);
+      const a = pick(CLAUSE_A), c = pick(CLAUSE_C);
+      return mk(`${a}___ ${link}, ${c}.`, ';', [',', ':', '!'], null,
+        `"${link}" is a linking adverb joining two complete sentences, so it needs a <b>semicolon</b> before it (and a comma after).`);
+    }
+    return mk(`We visited Paris, France; Rome, Italy___ and Madrid, Spain.`, ';', [',', ':', 'no punctuation'], null,
+      `The list items already contain commas, so the items are separated with <b>semicolons</b>.`);
+  }
+});
+
+topic({
+  id: 'punc-colon', lvl: 'P', em: '📌', name: 'Colons', fmt: ['mcq'],
+  why: ['A colon introduces a <b>list</b>, an <b>explanation</b> or a <b>quotation</b>.',
+        'What comes before the colon must be a complete sentence.',
+        'Do <b>not</b> use a colon straight after a verb or a preposition: <s>The ingredients are: flour, eggs.</s>',
+        'In British English, the word after a colon is usually lower case.'],
+  ex: ['You will need three things<em>:</em> a pen, paper and a ruler.',
+       'There is only one problem<em>:</em> we have no money.',
+       'The ingredients are flour, eggs and milk. (no colon after "are")'],
+  gen() {
+    const items = [
+      ['You will need three things___ a pen, paper and a ruler.', ':', [',', ';', 'no punctuation'], 'A complete sentence followed by a list → <b>colon</b>.'],
+      ['There is only one problem___ we have no money.', ':', [',', ';', '!'], 'The second part explains the first → <b>colon</b>.'],
+      ['The ingredients are ___ flour, eggs and milk.', 'no punctuation', [':', ';', ','], 'Never put a colon straight after the verb "are" — the words before a colon must be a complete sentence.'],
+      ['She gave one reason for leaving___ the hours were too long.', ':', [';', ',', '!'], 'An explanation of what came before → <b>colon</b>.'],
+      ['He said it best___ "Less is more."', ':', [';', '!', 'no punctuation'], 'A colon can introduce a <b>quotation</b>.'],
+      ['Remember to bring ___ your passport and your ticket.', 'no punctuation', [':', ';', '!'], 'No colon after the verb "bring" — the words before a colon must stand alone as a sentence.'],
+      ['The meeting starts at 9___30 in the morning.', '.', [':', ';', ','], 'British English writes clock times with a <b>full stop</b>: 9.30. (American English uses 9:30.)'],
+      ['The result was clear___ nobody wanted to change.', ':', [',', ';', '?'], 'The second half explains the first → <b>colon</b>.']
+    ];
+    const it = pick(items);
+    return mk(it[0], it[1], it[2], null, it[3]);
+  }
+});
+
+topic({
+  id: 'punc-hyphen', lvl: 'P', em: '➖', name: 'Hyphens', fmt: ['mcq'],
+  why: ['Hyphenate a compound adjective <b>before</b> a noun: <i>a well-known writer, a five-year-old boy</i>.',
+        'After the noun, no hyphen: <i>The writer is well known.</i>',
+        'Hyphenate compound numbers from 21 to 99: <i>twenty-one, forty-five</i>.',
+        'No hyphen after an adverb ending in <b>-ly</b>: <i>a beautifully designed building</i>.',
+        'Use a hyphen to avoid awkward or confusing letter pairs: <i>re-enter, co-operate, re-sign</i> (≠ resign).'],
+  ex: ['a <em>well-known</em> singer', 'The singer is <em>well known</em>.',
+       '<em>twenty-one</em> people', 'a <em>beautifully designed</em> room'],
+  gen() {
+    const items = [
+      ['She is a ___ writer.', 'well-known', ['well known', 'wellknown', 'well--known'], 'A compound adjective <b>before</b> a noun takes a hyphen: <b>well-known</b>.'],
+      ['The writer is ___.', 'well known', ['well-known', 'wellknown', 'well, known'], 'After the noun there is no hyphen: <b>well known</b>.'],
+      ['They have a ___ son.', 'five-year-old', ['five year old', 'five-year old', 'five years old'], 'A compound adjective before a noun is fully hyphenated: <b>five-year-old</b>.'],
+      ['Their son is ___.', 'five years old', ['five-year-old', 'five-years-old', 'five year old'], 'After the verb it is not an adjective, so no hyphens: <b>five years old</b>.'],
+      ['___ people applied for the job.', 'Twenty-one', ['Twenty one', 'Twentyone', 'Twenty,one'], 'Compound numbers from 21 to 99 are hyphenated: <b>twenty-one</b>.'],
+      ['It is a ___ building.', 'beautifully designed', ['beautifully-designed', 'beautifully,designed', 'beautifullydesigned'], 'No hyphen after an adverb ending in <b>-ly</b>.'],
+      ['Please ___ the building after the alarm.', 're-enter', ['reenter', 're enter', 're,enter'], 'A hyphen avoids the awkward double e: <b>re-enter</b>.'],
+      ['We need a ___ solution.', 'long-term', ['long term', 'longterm', 'long--term'], 'Before the noun, the compound adjective is hyphenated: <b>long-term</b>.'],
+      ['We are thinking about it in the ___.', 'long term', ['long-term', 'longterm', 'long,term'], 'Here it is a noun phrase after the preposition, so there is no hyphen.'],
+      ['He is a ___ manager.', 'part-time', ['part time', 'parttime', 'part,time'], 'Compound adjective before a noun → <b>part-time</b>.'],
+      ['She works ___.', 'part time', ['part-time', 'parttime', 'parts time'], 'Here it describes how she works, after the verb, so no hyphen is needed.']
+    ];
+    const it = pick(items);
+    return mk(it[0], it[1], it[2], null, it[3]);
+  }
+});
+
+topic({
+  id: 'punc-dash', lvl: 'P', em: '⎯', name: 'Dashes, brackets & ellipsis', fmt: ['mcq'],
+  why: ['<b>Brackets ( )</b> hold extra information the reader could skip.',
+        'A <b>pair of dashes</b> does the same job but adds emphasis: <i>The result — and nobody expected this — was a draw.</i>',
+        'A <b>single dash</b> before the end of a sentence introduces a surprise or a summary.',
+        'An <b>ellipsis …</b> shows that words have been left out, or that a sentence trails off.',
+        'A short <b>en dash –</b> shows a range: <i>pages 10–15, Monday–Friday</i>.'],
+  ex: ['The museum (built in 1890) is closed.',
+       'The answer — believe it or not — was wrong.',
+       'Read pages 10<em>–</em>15 for Monday.'],
+  gen() {
+    const items = [
+      ['The museum ___ built in 1890 ___ is closed for repairs.', 'brackets ( )', ['commas , ,', 'colons : :', 'no punctuation'], 'Extra information the reader could skip is usually put in <b>brackets</b>.'],
+      ['Read pages 10___15 before the lesson.', 'an en dash –', ['a hyphen -', 'a comma ,', 'a colon :'], 'A range of numbers takes an <b>en dash</b>: pages 10–15.'],
+      ['The office is open Monday___Friday.', 'an en dash –', ['a hyphen -', 'a slash /', 'a semicolon ;'], 'A range of days takes an <b>en dash</b>: Monday–Friday.'],
+      ['He paused and then said, "I just don\'t know___"', 'an ellipsis …', ['a full stop .', 'a comma ,', 'a dash –'], 'An <b>ellipsis</b> shows that the sentence trails off.'],
+      ['The result ___ and nobody expected this ___ was a draw.', 'a pair of dashes — —', ['a pair of colons : :', 'a pair of semicolons ; ;', 'no punctuation'], 'A <b>pair of dashes</b> marks an interruption with emphasis.'],
+      ['She had only one thing left to say___ goodbye.', 'a dash —', ['a comma ,', 'a semicolon ;', 'no punctuation'], 'A single <b>dash</b> before the end of a sentence builds up to a final point. (A colon also works here.)']
+    ];
+    const it = pick(items);
+    return mk(it[0], it[1], it[2], null, it[3]);
+  }
+});
+
+topic({
+  id: 'punc-abbrev', lvl: 'P', em: '🔡', name: 'Abbreviations & other marks', fmt: ['mcq'],
+  why: ['<b>e.g.</b> = for example. <b>i.e.</b> = that is, in other words. They are not interchangeable.',
+        '<b>etc.</b> ends a list and keeps its full stop; never write "and etc."',
+        'British English writes <b>Mr, Dr, St</b> with no full stop; American English writes Mr., Dr.',
+        'Decades take no apostrophe: <b>the 1990s</b>, not <s>the 1990\'s</s>.',
+        'Use <b>and</b> in normal writing; keep <b>&</b> for company names.'],
+  ex: ['Bring something sweet, <em>e.g.</em> fruit or chocolate.',
+       'There is one problem, <em>i.e.</em> the cost.',
+       'She grew up in the <em>1980s</em>.'],
+  gen() {
+    const items = [
+      ['Bring a snack, ___ fruit or nuts.', 'e.g.', ['i.e.', 'eg', 'ie.'], '<b>e.g.</b> introduces an <b>example</b>.'],
+      ['There is one problem, ___ the price.', 'i.e.', ['e.g.', 'ie', 'eg.'], '<b>i.e.</b> means "that is" — it restates or explains, it does not give an example.'],
+      ['We sell pens, pencils, rulers, ___', 'etc.', ['etc', 'and etc.', 'ect.'], '<b>etc.</b> keeps its full stop, and never follows "and".'],
+      ['She grew up in the ___.', '1990s', ["1990's", '1990`s', "'1990s"], 'A decade is a plural, not a possessive, so there is <b>no apostrophe</b>: 1990s.'],
+      ['The letter was addressed to ___ Smith.', 'Mr', ["Mr's", 'MR.', 'mr'], 'British English writes <b>Mr</b> with a capital and no full stop.'],
+      ['The report was written by Jones ___ Partners.', '&', ['and', '+', '/'], 'The ampersand <b>&</b> is kept for company names.'],
+      ['The meeting is at 9 ___', 'a.m.', ['am.', 'A.M', 'a-m'], 'Write <b>a.m.</b> and <b>p.m.</b> in lower case with full stops.'],
+      ['Please reply ___ Friday at the latest.', 'by', ['by,', 'by:', 'by;'], 'No punctuation is needed before an ordinary preposition.']
+    ];
+    const it = pick(items);
+    return mk(it[0], it[1], it[2], null, it[3]);
+  }
+});
+
 /* ===================== C1  ADVANCED ===================== */
 
 function fromItems(items) { const it = pick(items); return mk(it[0], it[1], it[2], null, it[3]); }
@@ -1884,7 +3081,8 @@ function canOrder(raw) { return orderable(raw) && !/[,;:]/.test(raw.sentence); }
 /* build a displayable question of a given format */
 function buildQ(topicId, format) {
   const t = TMAP[topicId];
-  const want = format && format !== 'auto' ? format : null;
+  let want = format && format !== 'auto' ? format : null;
+  if (want && t.fmt && t.fmt.indexOf(want) < 0) want = null;
   let raw = null;
   for (let i = 0; i < 14; i++) {
     const cand = t.gen();
@@ -1896,10 +3094,15 @@ function buildQ(topicId, format) {
   }
   if (!raw) raw = t.gen();
 
-  const formats = ['mcq', 'mcq', 'mcq', 'type'];
-  if (canOrder(raw)) formats.push('order');
-  if (orderable(raw)) formats.push('error');
-  const f = want || pick(formats);
+  let formats;
+  if (t.fmt) {
+    formats = t.fmt.slice();
+  } else {
+    formats = ['mcq', 'mcq', 'mcq', 'type'];
+    if (canOrder(raw)) formats.push('order');
+    if (orderable(raw)) formats.push('error');
+  }
+  const f = (want && formats.indexOf(want) >= 0) ? want : pick(formats);
 
   const base = { topic: topicId, topicName: t.name, lvl: t.lvl, explain: raw.explain, raw };
 
@@ -2067,8 +3270,8 @@ function recordAnswer(q, ok) {
   let xp = 0;
   if (ok) {
     xp = 10;
-    const lvIdx = LEVELS.findIndex(l => l.id === q.lvl);
-    xp += lvIdx * 2;
+    const lvW = (LEVELS.find(l => l.id === q.lvl) || {}).w || 0;
+    xp += lvW * 2;
     if (q.type === 'type') xp += 4;
     if (q.type === 'order') xp += 3;
     if (q.type === 'error') xp += 3;
@@ -2130,6 +3333,7 @@ const ACH = [
   { id: 'b2', e: '🔥', n: 'B2 Cleared', d: '80% mastery of Upper-Int.', test: s => levelProgress('B2') >= 80 },
   { id: 'c1', e: '👑', n: 'C1 Cleared', d: '80% mastery of Advanced', test: s => levelProgress('C1') >= 80 },
   { id: 'c2', e: '💎', n: 'C2 Cleared', d: '80% mastery of Proficiency', test: s => levelProgress('C2') >= 80 },
+  { id: 'punc', e: '✒️', n: 'Punctuation Pro', d: '80% mastery of Punctuation', test: s => levelProgress('P') >= 80 },
   { id: 'all5', e: '⭐', n: 'Five Stars', d: '5 stars on any 10 topics', test: s => TOPICS.filter(t => stars(t.id) === 5).length >= 10 },
   { id: 'explorer', e: '🧭', n: 'Explorer', d: 'Practise 25 different topics', test: s => Object.keys(s.topics).length >= 25 },
   { id: 'complete', e: '🏆', n: 'Completionist', d: 'Touch every topic at least once', test: s => Object.keys(s.topics).length >= TOPICS.length },
@@ -2174,10 +3378,10 @@ function adaptivePool(levelIds) {
 }
 /* every level is always open - this suggests where to go next */
 function recommendedLevel() {
-  for (let i = 0; i < LEVELS.length; i++) {
-    if (levelProgress(LEVELS[i].id) < 70) return LEVELS[i].id;
+  for (let i = 0; i < CEFR.length; i++) {
+    if (levelProgress(CEFR[i].id) < 70) return CEFR[i].id;
   }
-  return 'C2';
+  return levelProgress('P') < 70 ? 'P' : 'C2';
 }
 function weakestTopics(n) {
   return TOPICS.filter(t => { const s = S.topics[t.id]; return s && s.a >= 4; })
@@ -2437,7 +3641,7 @@ function vPractice() {
       <span>15 Q · 8 min${S.records.tests[l.id] ? ' · best ' + S.records.tests[l.id] + '%' : ''}</span></button>`).join('')}
     <button class="tile wide" style="--tc:rgba(255,212,112,.5)" onclick="startTest('MIX')">
       <span class="em">🧪</span><b>Full Placement Test</b>
-      <span>30 questions across every level · find your CEFR band${S.records.tests.MIX ? ' · best ' + S.records.tests.MIX + '%' : ''}</span></button>
+      <span>30 questions across A1–C2 · find your CEFR band${S.records.tests.MIX ? ' · best ' + S.records.tests.MIX + '%' : ''}</span></button>
   </div>
 
   <div class="cap mt2" style="margin-bottom:8px">Practice by exercise type</div>
@@ -2681,11 +3885,11 @@ function nextQuestion() {
   let topicId;
   if (c.topicId) topicId = c.topicId;
   else if (c.ladder) {
-    const lv = LEVELS[Qz.rung].id;
+    const lv = CEFR[Qz.rung].id;
     topicId = pick(BY_LEVEL[lv]).id;
   } else if (c.ramp) {
-    const maxIdx = Math.min(LEVELS.length - 1, Math.floor(Qz.score / 6));
-    const lvls = LEVELS.slice(0, maxIdx + 1).map(l => l.id);
+    const maxIdx = Math.min(CEFR.length - 1, Math.floor(Qz.score / 6));
+    const lvls = CEFR.slice(0, maxIdx + 1).map(l => l.id);
     topicId = pick(adaptivePool(lvls));
   } else topicId = pick(Qz.pool);
   return buildQ(topicId, c.format || 'auto');
@@ -2749,7 +3953,7 @@ function showQuestion() {
       <span class="cap">${esc(c.mode)}${c.infinite ? '' : ' · ' + (Qz.i + 1) + '/' + c.count}</span>
       <span class="tiny muted">${esc(q.lvl)} · ${esc(q.topicName)}</span>
     </div>
-    ${c.infinite ? `<div class="row sb mt"><b style="font-size:26px">${Qz.score}</b><span class="tiny muted">${c.ladder ? LEVELS[Qz.rung].em + ' ' + LEVELS[Qz.rung].id + ' rung' : 'score'}</span></div>` : ''}`;
+    ${c.infinite ? `<div class="row sb mt"><b style="font-size:26px">${Qz.score}</b><span class="tiny muted">${c.ladder ? CEFR[Qz.rung].em + ' ' + CEFR[Qz.rung].id + ' rung' : 'score'}</span></div>` : ''}`;
 
   const b = $('#qbody');
   if (q.type === 'mcq') {
@@ -2796,12 +4000,12 @@ function grade(ok, extra) {
     beep('ok'); buzz(14);
     const cb = sessionStats ? sessionStats.combo : 0;
     if (cb >= 3) comboPop('🔥 ' + cb + ' in a row!');
-    if (Qz.cfg.ladder) { Qz.rungHits = (Qz.rungHits || 0) + 1; if (Qz.rungHits >= 5 && Qz.rung < LEVELS.length - 1) { Qz.rung++; Qz.rungHits = 0; Qz.rungMiss = 0; toast('⬆️ Promoted to ' + LEVELS[Qz.rung].id + '!'); } }
+    if (Qz.cfg.ladder) { Qz.rungHits = (Qz.rungHits || 0) + 1; if (Qz.rungHits >= 5 && Qz.rung < CEFR.length - 1) { Qz.rung++; Qz.rungHits = 0; Qz.rungMiss = 0; toast('⬆️ Promoted to ' + CEFR[Qz.rung].id + '!'); } }
   } else {
     Qz.wrong++;
     beep('bad'); buzz([24, 40, 24]);
     if (Qz.cfg.lives) { Qz.lives--; }
-    if (Qz.cfg.ladder) { Qz.rungMiss = (Qz.rungMiss || 0) + 1; Qz.rungHits = 0; if (Qz.rungMiss >= 2) { Qz.rungMiss = 0; if (Qz.rung > 0) { Qz.rung--; toast('⬇️ Back to ' + LEVELS[Qz.rung].id); } } }
+    if (Qz.cfg.ladder) { Qz.rungMiss = (Qz.rungMiss || 0) + 1; Qz.rungHits = 0; if (Qz.rungMiss >= 2) { Qz.rungMiss = 0; if (Qz.rung > 0) { Qz.rung--; toast('⬇️ Back to ' + CEFR[Qz.rung].id); } } }
   }
   showFeedback(ok, extra);
   paintTop();
@@ -2919,7 +4123,7 @@ function finishQuiz() {
       <div class="stat"><b class="mono">${res.mins || 0}</b><span>Minutes</span></div>
     </div>
     ${c.infinite ? `<div class="card mt tc"><div class="cap">Final score</div><b style="font-size:32px">${Qz.score}</b>
-      ${c.ladder ? `<div class="tiny muted">Highest rung: ${LEVELS[Qz.rung].em} ${LEVELS[Qz.rung].id}</div>` : ''}</div>` : ''}
+      ${c.ladder ? `<div class="tiny muted">Highest rung: ${CEFR[Qz.rung].em} ${CEFR[Qz.rung].id}</div>` : ''}</div>` : ''}
     ${c.levelId === 'MIX' ? cefrCard(pct) : ''}
     ${weak.length ? `<div class="cap mt2 mb">Review these</div>${weak.slice(0, 4).map(id => `
       <button class="topic" onclick="closeQuizThen('openTopic','${id}')">
@@ -2975,6 +4179,7 @@ function formatPool(f) {
   if (!FORMAT_IDS[f]) {
     const test = f === 'order' ? canOrder : orderable;
     FORMAT_IDS[f] = TOPICS.filter(t => {
+      if (t.fmt && t.fmt.indexOf(f) < 0) return false;
       for (let i = 0; i < 10; i++) { try { if (test(t.gen())) return true; } catch (e) { return false; } }
       return false;
     }).map(t => t.id);
@@ -2989,7 +4194,7 @@ function practiceFormat(f) {
 function startTest(lv) {
   if (lv === 'MIX') {
     const pool = [];
-    LEVELS.forEach(l => BY_LEVEL[l.id].forEach(t => pool.push(t.id)));
+    CEFR.forEach(l => BY_LEVEL[l.id].forEach(t => pool.push(t.id)));
     return runQuiz({ mode: 'Test', levelId: 'MIX', count: 30, seconds: 15 * 60, pool });
   }
   runQuiz({ mode: 'Test', levelId: lv, count: 15, seconds: 8 * 60, levels: [lv] });
